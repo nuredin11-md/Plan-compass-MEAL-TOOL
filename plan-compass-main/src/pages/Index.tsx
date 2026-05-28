@@ -19,6 +19,7 @@ import ExportButton from "@/components/ExportButton";
 import AboutUsTab from "@/components/AboutUsTab";
 import WorkspaceTab from "@/components/WorkspaceTab";
 import Aianalysistab from "@/components/Aianalysistab";
+import HospitalKPITracker from "../../../src/components/HospitalKPITracker/HospitalKPITrackerApp";
 import { BackupManager } from "@/lib/backupUtils";
 import { AuditLogger } from "@/lib/securityUtils";
 import { mergeMonthlyData, convertMonthlyDataToEntries } from "@/lib/databaseSync";
@@ -273,6 +274,8 @@ const Index = () => {
         return <FeedbackTab monthlyData={monthlyData} />;
       case "about":
         return <AboutUsTab />;
+      case "hospital-tracker":
+        return <HospitalKPITracker />;
       default:
         return null;
     }
