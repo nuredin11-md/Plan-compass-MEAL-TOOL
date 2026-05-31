@@ -13,9 +13,12 @@ import {
   ThumbsUp,
   Percent,
   AlertCircle,
-  Pin
+  Pin,
+  CalendarPlus,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useGoogleAuth } from '../hooks/useGoogleAuth';
 
 interface DashboardPanelProps {
   kpis: KPIDefinition[];
@@ -25,6 +28,163 @@ interface DashboardPanelProps {
 }
 
 export default function DashboardPanel({ kpis, records, actionPlans, onNavigate }: DashboardPanelProps) {
+  const { token, signIn, isAuthenticating } = useGoogleAuth();
+  const [isSyncingCalendar, setIsSyncingCalendar] = useState(false);
+
+  const handleSyncToGoogleCalendar = async () => {
+    let activeToken = token;
+    if (!activeToken) {
+      activeToken = await signIn();
+    }
+    if (!activeToken) {
+      toast.error("Authentication with Google is required to sync calendar events.");
+      return;
+    }
+
+    if (actionPlans.length === 0) {
+      toast.info("No Action Plans found to sync.");
+      return;
+    }
+
+    setIsSyncingCalendar(true);
+    let successCount = 0;
+    let updateCount = 0;
+    let failedCount = 0;
+
+    try {
+      const savedEventIds = JSON.parse(localStorage.getItem('hospital_calendar_event_ids_map') || '{}');
+      const newEventIds = { ...savedEventIds };
+
+      for (const plan of actionPlans) {
+        const kpi = kpis.find(k => k.id === plan.kpiId);
+        const kpiName = kpi ? kpi.name : "Hospital Quality Target Metric";
+
+        const priorityLabel = plan.priority || 'Medium';
+        let colorId = '5'; // default yellow for medium
+        if (priorityLabel === 'High') colorId = '11'; // Tomato red
+        if (priorityLabel === 'Low') colorId = '10'; // Basil bold green (or sage green: '2')
+
+        const eventDate = plan.deadline && /^\d{4}-\d{2}-\d{2}$/.test(plan.deadline) 
+          ? plan.deadline 
+          : new Date().toISOString().split('T')[0];
+
+        const summary = `[Action Plan] ${kpiName}`;
+        const description = `📋 ACTION PLAN RESOLUTION DETAILS:
+------------------------------------------
+Metric/KPI: ${kpiName}
+Progress: ${plan.progress}
+Priority: ${priorityLabel}
+Assigned Owner: ${plan.responsiblePerson}
+
+⚠️ PERFORMANCE GAP STATUS:
+${plan.gapDescription}
+
+🔍 CLINICAL ROOT CAUSES:
+${plan.rootCause || 'Active root-cause auditing in progress.'}
+
+🛠️ PROPOSED CORRECTIVE ACTION ACTIONS:
+${plan.correctiveAction || 'None registered.'}
+
+------------------------------------------
+Updated automatically by Chefa Robit KPI Coordination System.`;
+
+        const eventPayload = {
+          summary,
+          description,
+          colorId,
+          start: {
+            dateTime: `${eventDate}T09:00:00`,
+            timeZone: 'Africa/Addis_Ababa'
+          },
+          end: {
+            dateTime: `${eventDate}T10:00:00`,
+            timeZone: 'Africa/Addis_Ababa'
+          },
+          reminders: {
+            useDefault: false,
+            overrides: [
+              { method: 'popup', minutes: 1440 }, // 1 day before
+              { method: 'popup', minutes: 60 }    // 1 hour before
+            ]
+          }
+        };
+
+        const existingEventId = savedEventIds[plan.id];
+        let syncedSuccessfully = false;
+
+        if (existingEventId) {
+          // Try to update existing event
+          try {
+            const updateRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${existingEventId}`, {
+              method: 'PUT',
+              headers: {
+                'Authorization': `Bearer ${activeToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(eventPayload)
+            });
+
+            if (updateRes.ok) {
+              syncedSuccessfully = true;
+              updateCount++;
+            } else if (updateRes.status === 404) {
+              console.log(`Event ${existingEventId} deleted from Google. Recreating...`);
+            } else {
+              console.error(`Failed to update event: ${updateRes.statusText}`);
+            }
+          } catch (err) {
+            console.error(`Network error updating event ${existingEventId}:`, err);
+          }
+        }
+
+        if (!syncedSuccessfully) {
+          // Create a new event
+          try {
+            const createRes = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${activeToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(eventPayload)
+            });
+
+            if (createRes.ok) {
+              const createdEvent = await createRes.json();
+              newEventIds[plan.id] = createdEvent.id;
+              successCount++;
+              syncedSuccessfully = true;
+            } else {
+              console.error(`Failed to create event: ${createRes.statusText}`);
+              failedCount++;
+            }
+          } catch (err) {
+            console.error(`Network error creating event:`, err);
+            failedCount++;
+          }
+        }
+      }
+
+      localStorage.setItem('hospital_calendar_event_ids_map', JSON.stringify(newEventIds));
+
+      if (failedCount === 0) {
+        if (updateCount > 0) {
+          toast.success(`Successfully synchronized all action plans! Created ${successCount} new and updated ${updateCount} existing events on Google Calendar.`);
+        } else {
+          toast.success(`Successfully added ${successCount} action plan deadlines to Google Calendar with double reminders (1 day and 1 hour before)!`);
+        }
+      } else {
+        toast.warning(`Sync partially completed: ${successCount} created, ${updateCount} updated, ${failedCount} failed.`);
+      }
+
+    } catch (e: any) {
+      console.error(e);
+      toast.error(`Error during synchronization: ${e.message}`);
+    } finally {
+      setIsSyncingCalendar(false);
+    }
+  };
+
   // Find all unique periods in records
   const uniqueMonths = useMemo(() => {
     const list = Array.from(new Set(records.map(r => r.month)));
@@ -66,39 +226,6 @@ export default function DashboardPanel({ kpis, records, actionPlans, onNavigate 
     return filteredPeriods[filteredPeriods.length - 1] || selectedMonth;
   }, [filteredPeriods, selectedMonth]);
 
-  // Handler to pin/post tracker summary to executive dashboard
-  const handlePinTrackerToDashboard = () => {
-    const newWidget = {
-      id: "kpi_tracker_summary_" + activePeriod + "_" + Date.now(),
-      title: `KPI Tracker: ${formatPeriod(activePeriod)}`,
-      chartType: "kpi-tracker-summary",
-      data: [{
-        area: "National clinical guidelines alignment",
-        totalKpis: monthlyStats.totalKpis || 0,
-        okCount: monthlyStats.okKpisCount || 0,
-        gapCount: monthlyStats.gapKpisCount || 0,
-        targetMetPercent: monthlyStats.targetMetPercent || 0,
-        score: monthlyStats.averageWeightedScore || 0,
-        period: activePeriod
-      }],
-      addedAt: new Date().toISOString()
-    };
-    const stored = localStorage.getItem("hospital_posted_dashboard_widgets");
-    const existing = stored ? JSON.parse(stored) : [];
-    
-    // Check if we already have this exact period pinned
-    const dupIndex = existing.findIndex((w: any) => w.id.includes("kpi_tracker_summary_" + activePeriod));
-    if (dupIndex > -1) {
-      existing[dupIndex] = newWidget;
-      toast.success(`Updated tracker summary for ${formatPeriod(activePeriod)} on Executive Dashboard!`);
-    } else {
-      existing.push(newWidget);
-      toast.success(`Pinned tracker summary for ${formatPeriod(activePeriod)} to Executive Dashboard!`);
-    }
-    
-    localStorage.setItem("hospital_posted_dashboard_widgets", JSON.stringify(existing));
-  };
-
   // Calculate monthly/periodic stats
   const monthlyStats = useMemo(() => {
     const monthRecords = records.filter(r => r.month === activePeriod);
@@ -131,6 +258,39 @@ export default function DashboardPanel({ kpis, records, actionPlans, onNavigate 
       totalWeight: totalAssignedWeight
     };
   }, [records, activePeriod, kpis]);
+
+  // Handler to pin/post tracker summary to executive dashboard
+  const handlePinTrackerToDashboard = () => {
+    const newWidget = {
+      id: "kpi_tracker_summary_" + activePeriod + "_" + Date.now(),
+      title: `KPI Tracker: ${formatPeriod(activePeriod)}`,
+      chartType: "kpi-tracker-summary",
+      data: [{
+        area: "National clinical guidelines alignment",
+        totalKpis: monthlyStats.totalKpis || 0,
+        okCount: monthlyStats.okKpisCount || 0,
+        gapCount: monthlyStats.gapKpisCount || 0,
+        targetMetPercent: monthlyStats.targetMetPercent || 0,
+        score: monthlyStats.averageWeightedScore || 0,
+        period: activePeriod
+      }],
+      addedAt: new Date().toISOString()
+    };
+    const stored = localStorage.getItem("hospital_posted_dashboard_widgets");
+    const existing = stored ? JSON.parse(stored) : [];
+    
+    // Check if we already have this exact period pinned
+    const dupIndex = existing.findIndex((w: any) => w.id.includes("kpi_tracker_summary_" + activePeriod));
+    if (dupIndex > -1) {
+      existing[dupIndex] = newWidget;
+      toast.success(`Updated tracker summary for ${formatPeriod(activePeriod)} on Executive Dashboard!`);
+    } else {
+      existing.push(newWidget);
+      toast.success(`Pinned tracker summary for ${formatPeriod(activePeriod)} to Executive Dashboard!`);
+    }
+    
+    localStorage.setItem("hospital_posted_dashboard_widgets", JSON.stringify(existing));
+  };
 
   // Historical performance trend line (respecting interval type for geometric safety)
   const historicalTrend = useMemo(() => {
@@ -258,6 +418,24 @@ export default function DashboardPanel({ kpis, records, actionPlans, onNavigate 
             title="Post active month's KPI tracker scoreboard to the executive dashboard"
           >
             <Pin className="w-3.5 h-3.5" /> Pin to Dashboard
+          </button>
+
+          {/* Sync to Calendar Button */}
+          <button
+            onClick={handleSyncToGoogleCalendar}
+            disabled={isSyncingCalendar || isAuthenticating}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 active:bg-emerald-800 text-white font-bold text-xs rounded-lg shadow-xs transition-all cursor-pointer uppercase tracking-wider"
+            title="Synchronize all resolution projects to Google Calendar with reminders"
+          >
+            {isSyncingCalendar ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Syncing...
+              </>
+            ) : (
+              <>
+                <CalendarPlus className="w-3.5 h-3.5" /> Sync to Calendar
+              </>
+            )}
           </button>
         </div>
       </div>

@@ -73,7 +73,7 @@ export function distributeAnnualTarget(annualTarget: number): {
 }
 // Module-level indicators array. This will be populated from Supabase via the
 // IndicatorsContext at runtime. Using a mutable binding allows other modules
-// to import `indicators` and observe updated values.
+// to observe updated values.
 export let indicators: Indicator[] = [];
 
 export function setIndicatorsFromDB(rows: HospitalPlanRow[] | Partial<Indicator>[]) {
@@ -106,9 +106,17 @@ export function getStatus(percent: number): "green" | "yellow" | "red" {
 }
 
 export function getActualYTD(code: string, monthlyData: MonthlyEntry[]): number {
-  return monthlyData
-    .filter((e) => e.code === code && e.actual !== null)
-    .reduce((sum, e) => sum + (e.actual ?? 0), 0);
+  const codeEntries = monthlyData.filter((e) => e.code === code && e.actual !== null);
+  const monthlyEntries = codeEntries.filter((e) => e.month !== "Annual" && e.month !== "Annual Target");
+  
+  if (monthlyEntries.length > 0) {
+    // If there are month-specific entries, sum them up
+    return monthlyEntries.reduce((sum, e) => sum + (e.actual ?? 0), 0);
+  }
+  
+  // Otherwise, fall back to the "Annual" performance row if it exists
+  const annualEntry = codeEntries.find((e) => e.month === "Annual");
+  return annualEntry ? (annualEntry.actual ?? 0) : 0;
 }
 
 export function getProgramAreas(): string[] {

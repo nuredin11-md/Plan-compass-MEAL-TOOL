@@ -12,6 +12,9 @@ interface AuthContextType {
   profile: Profile | null;
   role: string | null;
   loading: boolean;
+  mfaRequired: boolean;
+  aalLevel: "aal1" | "aal2";
+  refreshAal: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -20,6 +23,9 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   role: null,
   loading: true,
+  mfaRequired: false,
+  aalLevel: "aal1",
+  refreshAal: async () => {},
   signOut: async () => {},
 });
 
@@ -27,9 +33,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [aalLevel, setAalLevel] = useState<"aal1" | "aal2">("aal1");
   const [loading, setLoading] = useState(true);
   const initializedRef = useRef(false);
   const fetchingProfileRef = useRef(false);
+
+  const refreshAal = async () => {
+    try {
+      const { data: aalData, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!error && aalData) {
+        setAalLevel((aalData.currentLevel as "aal1" | "aal2") || "aal1");
+      }
+    } catch (err) {
+      console.error("Error refreshing AAL level:", err);
+    }
+  };
 
   const fetchProfile = async (userId: string) => {
     // Prevent concurrent profile fetches
@@ -51,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setProfile(profileData);
       setRole(roleData?.role ?? "viewer");
+      await refreshAal();
     } catch (err) {
       console.error("Error fetching profile:", err);
     } finally {
@@ -105,8 +124,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(null);
   };
 
+  const mfaRequired = (role === "admin" || role === "department_head") && aalLevel !== "aal2";
+
   return (
-    <AuthContext.Provider value={{ user, profile, role, loading, signOut }}>
+    <AuthContext.Provider value={{ user, profile, role, loading, mfaRequired, aalLevel, refreshAal, signOut }}>
       {children}
     </AuthContext.Provider>
   );

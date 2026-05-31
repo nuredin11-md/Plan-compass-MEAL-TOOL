@@ -1,5 +1,6 @@
 import RecognitionBoard from "./RecognitionBoard";
 import YearComparisonTab from "./YearComparisonTab";
+import { useIndicators } from "@/context/IndicatorsContext";
 import { Award, Sparkles, BrainCircuit, Activity, CheckSquare, Trophy, AlertTriangle, ShieldCheck, RefreshCw, Bot, Lightbulb, Check, ClipboardList, HelpCircle, Pin, Share2 } from "lucide-react";
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import {
@@ -207,6 +208,7 @@ export default function WorkspaceTab({
   selectedEFY,
 }: Props) {
   const { fetchHospitalPerformanceData } = useDatabase();
+  const { indicators: masterPlanIndicators } = useIndicators();
   const [planIndicators, setPlanIndicators] = useState<any[]>([]);
 
   const postWidgetToDashboard = useCallback((id: string, title: string, type: 'chart' | 'table', chartType: string, data: any) => {
@@ -259,7 +261,9 @@ export default function WorkspaceTab({
     return () => { mounted = false; };
   }, [fetchHospitalPerformanceData]);
 
-  const sourceIndicators = planIndicators && planIndicators.length > 0 ? planIndicators : [];
+  const sourceIndicators = masterPlanIndicators && masterPlanIndicators.length > 0
+    ? masterPlanIndicators
+    : (planIndicators && planIndicators.length > 0 ? planIndicators : []);
   const [selectedArea, setSelectedArea] = useState("all");
   const [analysisPeriod, setAnalysisPeriod] = useState("monthly");
   const [referenceMonth, setReferenceMonth] = useState(MONTHS[MONTHS.length - 1]);
@@ -947,7 +951,7 @@ export default function WorkspaceTab({
                       <ReferenceLine x={90} stroke={STATUS_COLORS.green.bg} strokeDasharray="4 2" label={{ value: "90%", fontSize: 9, fill: STATUS_COLORS.green.bg }} />
                       <ReferenceLine x={70} stroke={STATUS_COLORS.yellow.bg} strokeDasharray="4 2" label={{ value: "70%", fontSize: 9, fill: STATUS_COLORS.yellow.bg }} />
                       <Bar dataKey="avgPercent" name="Avg %" radius={[0, 3, 3, 0]}>
-                        {deptSummary.map((d, i) => (
+                        {[...deptSummary].sort((a, b) => b.avgPercent - a.avgPercent).map((d, i) => (
                           <Cell key={i} fill={STATUS_COLORS[getStatus(d.avgPercent)].bg} />
                         ))}
                       </Bar>
@@ -1010,7 +1014,7 @@ export default function WorkspaceTab({
                       />
                       <ReferenceLine y={90} stroke={STATUS_COLORS.green.bg} strokeDasharray="4 2" />
                       <Bar dataKey="percent" name="% Achieved" radius={[3, 3, 0, 0]}>
-                        {indicatorPerformance.slice(0, 10).map((d, i) => (
+                        {[...indicatorPerformance].sort((a, b) => b.percent - a.percent).slice(0, 10).map((d, i) => (
                           <Cell key={i} fill={STATUS_COLORS[d.status].bg} />
                         ))}
                       </Bar>
@@ -1162,16 +1166,17 @@ export default function WorkspaceTab({
                                 dataKey="value"
                                 strokeWidth={0}
                               >
-                                {[0, 1, 2].map((i) => (
+                                {[
+                                  { value: d.onTrack, fill: STATUS_COLORS.green.bg },
+                                  { value: d.atRisk, fill: STATUS_COLORS.yellow.bg },
+                                  { value: d.offTrack, fill: STATUS_COLORS.red.bg },
+                                  ...(d.total === 0
+                                    ? [{ value: 1, fill: "hsl(var(--muted))" }]
+                                    : []),
+                                ].map((item, i) => (
                                   <Cell
                                     key={i}
-                                    fill={
-                                      [
-                                        STATUS_COLORS.green.bg,
-                                        STATUS_COLORS.yellow.bg,
-                                        STATUS_COLORS.red.bg,
-                                      ][i]
-                                    }
+                                    fill={item.fill}
                                   />
                                 ))}
                               </Pie>

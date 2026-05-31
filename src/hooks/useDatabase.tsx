@@ -58,9 +58,9 @@ export interface HospitalPlanPerformance {
 
 // Ethiopian months to convert correctly
 const MONTHS_ISO = [
-  "Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)", "Tikimt (Feb)",
-  "Hidar (Mar)", "Tahsas (Apr)", "Tir (May)", "Yekatit (Jun)",
-  "Megabit (Jul)", "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)"
+  "Hamle", "Nehase", "Meskerem", "Tikimt",
+  "Hidar", "Tahsas", "Tir", "Yekatit",
+  "Megabit", "Miyazia", "Ginbot", "Sene"
 ];
 
 export function useDatabase() {
@@ -111,16 +111,24 @@ export function useDatabase() {
             // month may be stored as text (Ethiopian month names) or numeric
             const monthVal = row.month;
             const monthNumber = typeof monthVal === "number" ? monthVal : Number(monthVal);
+            let monthName: any = !Number.isNaN(monthNumber) ? monthNumber : row.month;
+            if (typeof monthName === "string") {
+              monthName = monthName.trim().split(" ")[0];
+            }
+            const actualValue = (row.value !== undefined && row.value !== null) 
+              ? Number(row.value) 
+              : ((row.actual !== undefined && row.actual !== null) ? Number(row.actual) : null);
+
             return {
               id: row.id ?? `${row.year}-${row.month}-${row.indicator_code}`,
               year: row.year,
-              month: !Number.isNaN(monthNumber) ? monthNumber : row.month,
+              month: monthName,
               indicator_code: row.indicator_code,
-              actual: Number(row.value ?? row.actual ?? 0),
+              actual: actualValue,
               remarks: row.remark ?? row.remarks ?? "",
               entered_by: row.reported_by ?? row.entered_by ?? null,
               created_at: row.created_at,
-            } as MonthlyData;
+            } as any;
           });
 
           // Cache in offline storage
@@ -342,13 +350,13 @@ export function useDatabase() {
         const fiscal_year = `${year} EFY`;
         const payload = {
           category: program_area,
-          indicator_name: indicator_code,
+          indicator_name: indicator,
           fiscal_year,
           metric_type: "Plan",
           metric_value: target,
           percentage_value: null,
           status: unit,
-          remark: indicator,
+          remark: indicator_code,
           created_at: new Date().toISOString(),
         } as any;
 
@@ -365,10 +373,17 @@ export function useDatabase() {
   );
 
   const deleteHospitalPlan = useCallback(
-    async (year: number, indicator_code: string): Promise<boolean> => {
+    async (year: number, indicator_code: string, indicator_name?: string): Promise<boolean> => {
       try {
         setError(null);
         const fiscal_year = `${year} EFY`;
+        if (indicator_name) {
+          try {
+            await deleteHospitalPlanRow(fiscal_year, indicator_name);
+          } catch (e) {
+            if (import.meta.env.DEV) console.error('Failed to delete by name, will retry with code:', e);
+          }
+        }
         await deleteHospitalPlanRow(fiscal_year, indicator_code);
         return true;
       } catch (err) {

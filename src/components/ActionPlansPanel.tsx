@@ -78,6 +78,7 @@ export default function ActionPlansPanel({
   const [responsiblePerson, setResponsiblePerson] = useState('');
   const [deadline, setDeadline] = useState('');
   const [progress, setProgress] = useState<'Not started' | 'In progress' | 'Completed'>('Not started');
+  const [priority, setPriority] = useState<'High' | 'Medium' | 'Low'>('Medium');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiNote, setAiNote] = useState('');
 
@@ -94,6 +95,7 @@ export default function ActionPlansPanel({
       setResponsiblePerson(plan.responsiblePerson);
       setDeadline(plan.deadline);
       setProgress(plan.progress);
+      setPriority(plan.priority || 'Medium');
     } else {
       // Clear form for new plan
       setRootCause('');
@@ -101,6 +103,7 @@ export default function ActionPlansPanel({
       setResponsiblePerson('');
       setDeadline('');
       setProgress('Not started');
+      setPriority('Medium');
     }
     setAiNote('');
   };
@@ -114,12 +117,14 @@ export default function ActionPlansPanel({
         setResponsiblePerson(activeGap.plan.responsiblePerson);
         setDeadline(activeGap.plan.deadline);
         setProgress(activeGap.plan.progress);
+        setPriority(activeGap.plan.priority || 'Medium');
       } else {
         setRootCause('');
         setCorrectiveAction('');
         setResponsiblePerson('');
         setDeadline('');
         setProgress('Not started');
+        setPriority('Medium');
       }
       setAiNote('');
     }
@@ -188,7 +193,8 @@ export default function ActionPlansPanel({
       correctiveAction,
       responsiblePerson,
       deadline,
-      progress
+      progress,
+      priority
     };
 
     onSaveActionPlan(plan);
@@ -263,18 +269,28 @@ export default function ActionPlansPanel({
                       Period: {formatPeriod(rec.month)}
                     </span>
                     
-                    {plan ? (
-                      <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                        plan.progress === 'Completed' ? 'bg-emerald-100 text-emerald-900' :
-                        plan.progress === 'In progress' ? 'bg-blue-100 text-blue-900' : 'bg-slate-200 text-slate-800'
-                      }`}>
-                        {plan.progress}
-                      </span>
-                    ) : (
-                      <span className="text-[8px] font-extrabold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-0.5">
-                        Lacking Plan
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {plan?.priority && (
+                        <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                          plan.priority === 'High' ? 'bg-red-500/20 text-red-500' :
+                          plan.priority === 'Medium' ? 'bg-amber-500/20 text-amber-500' : 'bg-emerald-500/20 text-emerald-500'
+                        }`}>
+                          {plan.priority}
+                        </span>
+                      )}
+                      {plan ? (
+                        <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                          plan.progress === 'Completed' ? 'bg-emerald-100 text-emerald-900' :
+                          plan.progress === 'In progress' ? 'bg-blue-100 text-blue-900' : 'bg-slate-200 text-slate-800'
+                        }`}>
+                          {plan.progress}
+                        </span>
+                      ) : (
+                        <span className="text-[8px] font-extrabold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-0.5">
+                          Lacking Plan
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <h4 className="font-bold text-xs truncate w-full" title={kpi.name}>
@@ -413,6 +429,33 @@ export default function ActionPlansPanel({
                         className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl pl-9 pr-4 py-2 text-xs font-bold focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
+                  </div>
+                </div>
+
+                {/* Priority Selection */}
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Priority Tier</label>
+                  <div className="flex flex-wrap gap-3">
+                    {['High', 'Medium', 'Low'].map((p) => {
+                      const isSelected = priority === p;
+                      return (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setPriority(p as any)}
+                          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border shrink-0 cursor-pointer ${
+                            isSelected 
+                              ? p === 'High' ? 'bg-red-500 text-white border-red-600 shadow-sm' :
+                                p === 'Medium' ? 'bg-amber-500 text-white border-amber-600 shadow-sm' :
+                                'bg-green-600 text-white border-green-700 shadow-sm'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-150'
+                          }`}
+                        >
+                          {isSelected && '✦ '}
+                          {p}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

@@ -21,6 +21,7 @@ A comprehensive health performance planning and monitoring application designed 
 - **Node.js** 18+ and **npm** or **bun** package manager.
 
 ### Installation
+
 ```bash
 # Clone the repository
 git clone <YOUR_GIT_URL>
@@ -28,7 +29,11 @@ cd plan-compass
 
 # Install dependencies
 npm install
-🏗️ Project Structure
+```
+
+### 🏗️ Project Structure
+
+```text
 src/
 ├── components/          # React components
 │   ├── MasterPlanTab.tsx     # Enhanced: Inline edit, Delete, Fullscreen
@@ -38,32 +43,38 @@ src/
 ├── data/                # Static data & Indicator definitions
 ├── hooks/               # Custom hooks (useDatabase, useAuth)
 └── lib/                 # Export and utility functions
-🛠️ Tech Stack
-Frontend: React 18, TypeScript, Vite
+```
 
-UI & Styling: shadcn/ui, Tailwind CSS, Lucide Icons
+### 🛠️ Tech Stack
 
-Backend/Auth: Supabase
+- **Frontend**: React 18, TypeScript, Vite
+- **UI & Styling**: shadcn/ui, Tailwind CSS, Lucide Icons
+- **Backend/Auth**: Supabase
+- **Charts**: Recharts
+- **PDF Export**: jsPDF, jspdf-autotable
 
-Charts: Recharts
+### 📊 Latest Updates (v1.0.0)
 
-PDF Export: jsPDF, jspdf-autotable
+- ✅ **Dynamic Row Actions**: Added Pencil (Edit) and Trash (Delete) icons for every indicator.
+- ✅ **Responsive Table UI**: Fixed headers and code columns for easier horizontal scrolling.
+- ✅ **Persistence**: Integrated database calls to ensure edits and deletions are saved permanently.
+- ✅ **Target Overrides**: Improved logic for handling year-specific indicator targets.
 
-📊 Latest Updates (v1.0.0)
-✅ Dynamic Row Actions: Added Pencil (Edit) and Trash (Delete) icons for every indicator.
+### 🤝 Contributing
 
-✅ Responsive Table UI: Fixed headers and code columns for easier horizontal scrolling.
-
-✅ Persistence: Integrated database calls to ensure edits and deletions are saved permanently.
-
-✅ Target Overrides: Improved logic for handling year-specific indicator targets.
-
-🤝 Contributing
 Contributions are welcome! Please ensure code follows project lint rules and all changes are well-tested.
 
-📄 License
+### 📄 License
+
 This project is proprietary. All rights reserved.
 
 © 2026 Plan Compass Development Team.
+
+---
+
+### Running Development Server
+
+```bash
 # Start development server
 npm run dev
+```

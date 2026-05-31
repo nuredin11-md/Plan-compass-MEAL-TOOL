@@ -377,7 +377,8 @@ export const INITIAL_ACTION_PLANS: ActionPlan[] = [
     correctiveAction: "Initiate weekly audits, streamline clinical file archiving, and train nursing staff on core record compliance.",
     responsiblePerson: "Medical Director & Plan Coordinator",
     deadline: "2025-12-31",
-    progress: "In progress"
+    progress: "In progress",
+    priority: "High"
   },
   {
     id: "ap2",
@@ -388,7 +389,8 @@ export const INITIAL_ACTION_PLANS: ActionPlan[] = [
     correctiveAction: "Improve coordination of discharge times and optimize bed allocation across emergency and inpatient units.",
     responsiblePerson: "Ward Head Nurse",
     deadline: "2025-12-15",
-    progress: "Completed"
+    progress: "Completed",
+    priority: "Medium"
   },
   {
     id: "ap3",
@@ -399,7 +401,8 @@ export const INITIAL_ACTION_PLANS: ActionPlan[] = [
     correctiveAction: "Enforce mandatory rapid triage protocols and optimize weekend shift staffing for emergency responders.",
     responsiblePerson: "Emergency Dept Head",
     deadline: "2025-12-31",
-    progress: "Not started"
+    progress: "Not started",
+    priority: "High"
   }
 ];
 

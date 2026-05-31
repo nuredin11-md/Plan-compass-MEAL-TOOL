@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { type MonthlyEntry, setIndicatorsFromDB } from "@/data/hospitalIndicators";
+import { type MonthlyEntry, setIndicatorsFromDB, MONTHS } from "@/data/hospitalIndicators";
 import { useAuth } from "@/hooks/useAuth";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
@@ -12,14 +12,13 @@ import MonthlyDataTab from "@/components/MonthlyDataTab";
 import DashboardTab from "@/components/DashboardTab";
 import DHIS2ImportTab from "@/components/DHIS2ImportTab";
 import FeedbackTab from "@/components/FeedbackTab";
-import DistributionTab from "@/components/DistributionTab";
+import MeetingHubTab from "@/components/MeetingHubTab";
 import BackupRecoveryTab from "@/components/BackupRecoveryTab";
 import YearComparisonTab from "@/components/YearComparisonTab";
 import ExportButton from "@/components/ExportButton";
 import AboutUsTab from "@/components/AboutUsTab";
 import WorkspaceTab from "@/components/WorkspaceTab";
-import Aianalysistab from "@/components/Aianalysistab";
-import HospitalKPITracker from "../../../src/components/HospitalKPITracker/HospitalKPITrackerApp";
+import HospitalKPITracker from "@/components/HospitalKPITracker/HospitalKPITrackerApp";
 import { BackupManager } from "@/lib/backupUtils";
 import { AuditLogger } from "@/lib/securityUtils";
 import { mergeMonthlyData, convertMonthlyDataToEntries } from "@/lib/databaseSync";
@@ -91,7 +90,7 @@ const Index = () => {
               .toUpperCase()
               .replace(/[^A-Z0-9]+/g, "_")
               .replace(/^_+|_+$/g, "")
-              .slice(0, 40);
+              .slice(0, 100);
             const match = indicatorSource.find((ind) => ind.code === code);
             return {
               code,
@@ -103,9 +102,30 @@ const Index = () => {
             } as MonthlyEntry;
           });
 
+        const numYear = getEFYNumber(efyYear);
+        const monthlyDbData = await fetchMonthlyData(numYear);
+
+        const monthlyEntries: MonthlyEntry[] = monthlyDbData.map((row) => {
+          let mName = "";
+          const monthNum = Number(row.month);
+          if (!Number.isNaN(monthNum)) {
+            mName = MONTHS[monthNum - 1] ?? `Month ${monthNum}`;
+          } else {
+            mName = String(row.month);
+          }
+          return {
+            code: row.indicator_code,
+            month: mName,
+            actual: row.actual,
+            remarks: row.remarks || "",
+          };
+        });
+
+        const combinedEntries = [...entries, ...monthlyEntries];
+
         setYearlyData((prev) => ({
           ...prev,
-          [efyYear]: entries,
+          [efyYear]: combinedEntries,
         }));
 
         AuditLogger.logAction(
@@ -115,7 +135,7 @@ const Index = () => {
           "success",
           {
             efyYear,
-            recordCount: perfData.length,
+            recordCount: perfData.length + monthlyDbData.length,
             timestamp: new Date().toISOString(),
           }
         );
@@ -125,7 +145,7 @@ const Index = () => {
         toast.error(`Failed to load data for ${efyYear}`);
       }
     },
-    [fetchHospitalPerformanceData, indicators, user?.id]
+    [fetchHospitalPerformanceData, fetchMonthlyData, indicators, user?.id]
   );
 
   // Load current and previous EFY on mount
@@ -170,6 +190,10 @@ const Index = () => {
     if (!yearlyData[newEFY]) {
       await loadYearData(newEFY);
     }
+    const prevEFY = getPreviousEFY(newEFY);
+    if (!yearlyData[prevEFY]) {
+      await loadYearData(prevEFY);
+    }
   };
 
   // Auto-backup every 30 minutes
@@ -195,9 +219,21 @@ const Index = () => {
   const renderContent = () => {
     switch (activeTab) {
       case "dashboard":
-        return <DashboardTab />;
+        return <DashboardTab monthlyData={monthlyData} />;
       case "workspace":
-        return <WorkspaceTab monthlyData={monthlyData} />;
+        return (
+          <WorkspaceTab
+            monthlyData={monthlyData}
+            compareData={compareData}
+            currentYear={selectedYear}
+            compareYear={compareYear ?? undefined}
+            compareEFY={compareEFY}
+            setCompareEFY={setCompareEFY}
+            availableEFYYears={availableEFYYears}
+            formatEFYDisplay={formatEFYDisplay}
+            selectedEFY={selectedEFY}
+          />
+        );
       case "masterplan":
         return (
           <MasterPlanTab
@@ -208,6 +244,8 @@ const Index = () => {
             }
           />
         );
+      case "hospital-tracker":
+        return <HospitalKPITracker />;
       case "monthly":
         return (
           <MonthlyDataTab
@@ -223,15 +261,8 @@ const Index = () => {
             setMonthlyData={setMonthlyData}
           />
         );
-      case "distribution":
-        return <DistributionTab monthlyData={monthlyData} />;
-      case "aianalysis":
-        return (
-          <Aianalysistab
-            indicators={indicators}
-            monthlyData={monthlyData}
-          />
-        );
+      case "meeting-hub":
+        return <MeetingHubTab monthlyData={monthlyData} />;
       case "backup":
         return (
           <BackupRecoveryTab
@@ -239,43 +270,10 @@ const Index = () => {
             setMonthlyData={setMonthlyData}
           />
         );
-      case "comparison":
-        return (
-          <div>
-            <div className="mb-4">
-              <label className="text-sm font-medium mr-2">Compare with:</label>
-              <Select
-                value={compareEFY ?? ""}
-                onValueChange={(v) => setCompareEFY(v || null)}
-              >
-                <SelectTrigger className="w-[180px] inline-flex">
-                  <SelectValue placeholder="Select EFY year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableEFYYears
-                    .filter((y) => y !== selectedEFY)
-                    .map((y) => (
-                      <SelectItem key={y} value={y}>
-                        {formatEFYDisplay(y)}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <YearComparisonTab
-              monthlyData={monthlyData}
-              compareData={compareData}
-              currentYear={selectedYear}
-              compareYear={compareYear ?? undefined}
-            />
-          </div>
-        );
       case "feedback":
         return <FeedbackTab monthlyData={monthlyData} />;
       case "about":
         return <AboutUsTab />;
-      case "hospital-tracker":
-        return <HospitalKPITracker />;
       default:
         return null;
     }
@@ -288,102 +286,106 @@ const Index = () => {
 
         <div className="flex-1 flex flex-col min-w-0">
           {/* Header */}
-          <header className="bg-[#0f172a] text-white sticky top-0 z-40 border-b border-white/10 shadow-lg">
-            <div className="px-4 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <SidebarTrigger className="text-white hover:bg-white/20 transition-colors rounded-lg" />
-                <div className="hidden sm:flex items-center gap-3">
-                  <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-md">
-                    <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
-                    </svg>
+          {activeTab !== "hospital-tracker" && (
+            <header className="bg-[#0f172a] text-white sticky top-0 z-40 border-b border-white/10 shadow-lg">
+              <div className="px-4 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <SidebarTrigger className="text-white hover:bg-white/20 transition-colors rounded-lg" />
+                  <div className="hidden sm:flex items-center gap-3">
+                    <div className="h-8 w-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-md">
+                      <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
+                      </svg>
+                    </div>
+                    <h1 className="text-xl font-bold tracking-tight text-white">
+                      Hospital M&E Platform
+                    </h1>
                   </div>
-                  <h1 className="text-xl font-bold tracking-tight text-white">
-                    Hospital M&E Platform
-                  </h1>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                {/* EFY Year Selector */}
-                <Select value={selectedEFY} onValueChange={handleEFYChange}>
-                  <SelectTrigger className="w-[160px] bg-white/10 border-white/20 text-white hover:bg-white/15 transition-colors rounded-lg backdrop-blur-md">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableEFYYears.map((y) => (
-                      <SelectItem key={y} value={y}>
-                        {formatEFYDisplay(y)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {(activeTab === "masterplan" ||
-                  activeTab === "monthly" ||
-                  activeTab === "workspace") && (
-                  <ExportButton
-                    monthlyData={monthlyData}
-                    type={
-                      activeTab === "masterplan" ? "masterplan" : "monthly"
-                    }
-                  />
-                )}
-
-                <div className="hidden sm:flex items-center gap-2 text-sm text-white backdrop-blur-md bg-white/10 px-3 py-2 rounded-lg border border-white/10">
-                  <User className="h-4 w-4 text-white" />
-                  <span className="font-medium text-white">
-                    {profile?.display_name || user?.email}
-                  </span>
-                  <span className="text-xs text-white/70">
-                    ({profile?.department})
-                  </span>
                 </div>
 
-                {/* Sync Status */}
-                <div className="flex items-center gap-2">
-                  {isOnline ? (
-                    <div className="hidden sm:flex items-center gap-2 text-sm text-white backdrop-blur-md bg-green-500/20 px-3 py-2 rounded-lg border border-green-500/30">
-                      <Cloud className="h-4 w-4 text-green-400" />
-                      <span className="text-xs text-white">Online</span>
-                    </div>
-                  ) : (
-                    <div className="hidden sm:flex items-center gap-2 text-sm text-white backdrop-blur-md bg-yellow-500/20 px-3 py-2 rounded-lg border border-yellow-500/30">
-                      <CloudOff className="h-4 w-4 text-yellow-400" />
-                      <span className="text-xs text-white">Offline</span>
-                    </div>
+                <div className="flex items-center gap-3">
+                  {/* EFY Year Selector */}
+                  <Select value={selectedEFY} onValueChange={handleEFYChange}>
+                    <SelectTrigger className="w-[160px] bg-[#3cd07b] border-white/20 text-white hover:bg-[#3cd07b]/90 font-bold transition-colors rounded-lg backdrop-blur-md">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableEFYYears.map((y) => (
+                        <SelectItem key={y} value={y}>
+                          {formatEFYDisplay(y)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {(activeTab === "masterplan" ||
+                    activeTab === "monthly" ||
+                    activeTab === "workspace") && (
+                    <ExportButton
+                      monthlyData={monthlyData}
+                      type={
+                        activeTab === "masterplan" ? "masterplan" : "monthly"
+                      }
+                    />
                   )}
 
-                  {pendingSyncCount > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={manualSync}
-                      disabled={isSyncing || !isOnline}
-                      className="text-xs gap-1 text-white bg-blue-500/20 border-blue-500/30 hover:bg-blue-500/30 hover:text-white"
-                    >
-                      <RefreshCw
-                        className={`h-3 w-3 text-white ${isSyncing ? "animate-spin" : ""}`}
-                      />
-                      Sync ({pendingSyncCount})
-                    </Button>
-                  )}
-                </div>
+                  <div className="hidden sm:flex items-center gap-2 text-sm text-white backdrop-blur-md bg-[#21669a] px-3 py-2 rounded-lg border border-white/10">
+                    <User className="h-4 w-4 text-white" />
+                    <span className="font-medium text-white">
+                      {profile?.display_name || user?.email}
+                    </span>
+                    <span className="text-xs text-white/70">
+                      ({profile?.department})
+                    </span>
+                  </div>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={signOut}
-                  className="text-white hover:bg-white/20 transition-colors gap-1 rounded-lg border border-white/20 backdrop-blur-md"
-                >
-                  <LogOut className="h-4 w-4 text-white" /> Sign Out
-                </Button>
+                  {/* Sync Status */}
+                  <div className="flex items-center gap-2">
+                    {isOnline ? (
+                      <div className="hidden sm:flex items-center gap-2 text-sm text-white backdrop-blur-md bg-green-500/20 px-3 py-2 rounded-lg border border-green-500/30">
+                        <Cloud className="h-4 w-4 text-green-400" />
+                        <span className="text-xs text-white">Online</span>
+                      </div>
+                    ) : (
+                      <div className="hidden sm:flex items-center gap-2 text-sm text-white backdrop-blur-md bg-yellow-500/20 px-3 py-2 rounded-lg border border-yellow-500/30">
+                        <CloudOff className="h-4 w-4 text-yellow-400" />
+                        <span className="text-xs text-white">Offline</span>
+                      </div>
+                    )}
+
+                    {pendingSyncCount > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={manualSync}
+                        disabled={isSyncing || !isOnline}
+                        className="text-xs gap-1 text-white bg-blue-500/20 border-blue-500/30 hover:bg-blue-500/30 hover:text-white"
+                      >
+                        <RefreshCw
+                          className={`h-3 w-3 text-white ${isSyncing ? "animate-spin" : ""}`}
+                        />
+                        Sync ({pendingSyncCount})
+                      </Button>
+                    )}
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={signOut}
+                    className="text-white bg-[#de0e0e] hover:bg-[#de0e0e]/90 transition-colors gap-1 rounded-lg border border-white/20 backdrop-blur-md"
+                  >
+                    <LogOut className="h-4 w-4 text-white" /> Sign Out
+                  </Button>
+                </div>
               </div>
-            </div>
-          </header>
+            </header>
+          )}
 
           {/* Content */}
-          <main className="flex-1 p-6 overflow-auto bg-gradient-to-br from-background to-background/80">
+          <main className={`flex-grow h-full overflow-hidden bg-gradient-to-br from-background to-background/80 flex flex-col ${
+            activeTab === "hospital-tracker" ? "p-0" : "p-6 overflow-y-auto"
+          }`}>
             {isLoadingData ? (
               <div className="flex items-center justify-center h-64">
                 <div className="flex flex-col items-center gap-3">

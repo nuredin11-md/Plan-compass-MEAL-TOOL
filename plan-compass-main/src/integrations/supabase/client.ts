@@ -5,7 +5,7 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
-const supabaseNotConfiguredError = 'Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in your .env file.';
+const supabaseNotConfiguredError = 'Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY';
 
 const createFallbackClient = () => {
   const createQueryStub = () => {
@@ -46,7 +46,6 @@ export const supabase: SupabaseClient<Database> =
     : (createFallbackClient() as unknown as SupabaseClient<Database>);
 
 if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  // Console error intentionally — app will still run but Supabase operations will return stubbed errors.
   // eslint-disable-next-line no-console
   console.error(supabaseNotConfiguredError);
 }

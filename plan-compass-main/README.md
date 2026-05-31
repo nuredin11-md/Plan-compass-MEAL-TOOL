@@ -28,7 +28,10 @@ cd plan-compass
 
 # Install dependencies
 npm install
-🏗️ Project Structure
+```
+
+### 🏗️ Project Structure
+```text
 src/
 ├── components/          # React components
 │   ├── MasterPlanTab.tsx     # Enhanced: Inline edit, Delete, Fullscreen
@@ -38,32 +41,34 @@ src/
 ├── data/                # Static data & Indicator definitions
 ├── hooks/               # Custom hooks (useDatabase, useAuth)
 └── lib/                 # Export and utility functions
-🛠️ Tech Stack
-Frontend: React 18, TypeScript, Vite
+```
 
-UI & Styling: shadcn/ui, Tailwind CSS, Lucide Icons
+### 🛠️ Tech Stack
+- **Frontend**: React 18, TypeScript, Vite
+- **UI & Styling**: shadcn/ui, Tailwind CSS, Lucide Icons
+- **Backend/Auth**: Supabase
+- **Charts**: Recharts
+- **PDF Export**: jsPDF, jspdf-autotable
 
-Backend/Auth: Supabase
+### 📊 Latest Updates (v1.0.0)
+- ✅ **Dynamic Row Actions**: Added Pencil (Edit) and Trash (Delete) icons for every indicator.
+- ✅ **Responsive Table UI**: Fixed headers and code columns for easier horizontal scrolling.
+- ✅ **Persistence**: Integrated database calls to ensure edits and deletions are saved permanently.
+- ✅ **Target Overrides**: Improved logic for handling year-specific indicator targets.
 
-Charts: Recharts
-
-PDF Export: jsPDF, jspdf-autotable
-
-📊 Latest Updates (v1.0.0)
-✅ Dynamic Row Actions: Added Pencil (Edit) and Trash (Delete) icons for every indicator.
-
-✅ Responsive Table UI: Fixed headers and code columns for easier horizontal scrolling.
-
-✅ Persistence: Integrated database calls to ensure edits and deletions are saved permanently.
-
-✅ Target Overrides: Improved logic for handling year-specific indicator targets.
-
-🤝 Contributing
+### 🤝 Contributing
 Contributions are welcome! Please ensure code follows project lint rules and all changes are well-tested.
 
-📄 License
+### 📄 License
 This project is proprietary. All rights reserved.
 
 © 2026 Plan Compass Development Team.
+
+---
+
+### Running Development Server
+
+```bash
 # Start development server
 npm run dev
+```

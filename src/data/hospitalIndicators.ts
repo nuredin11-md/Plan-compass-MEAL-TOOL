@@ -47,9 +47,9 @@ export interface PeriodicTarget {
 // Ethiopian Financial Year: Hamle (July) to Sene (June)
 // Mapped to Gregorian months starting from November
 export const MONTHS = [
-  "Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)", "Tikimt (Feb)",
-  "Hidar (Mar)", "Tahsas (Apr)", "Tir (May)", "Yekatit (Jun)",
-  "Megabit (Jul)", "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)"
+  "Hamle", "Nehase", "Meskerem", "Tikimt",
+  "Hidar", "Tahsas", "Tir", "Yekatit",
+  "Megabit", "Miyazia", "Ginbot", "Sene"
 ];
 
 // ─── TIME-BASED AUTO-DISTRIBUTION ─────────────────────────────────────────

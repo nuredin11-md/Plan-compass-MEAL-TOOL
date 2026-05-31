@@ -42,7 +42,7 @@ export function useOfflineSync(): UseOfflineSyncReturn {
   useEffect(() => {
     const checkDatabaseAvailability = async () => {
       try {
-        const { error } = await supabase.from("monthly_data").select("*").limit(1);
+        const { error } = await supabase.from("monthly_entries").select("*").limit(1);
         setIsDatabaseAvailable(!error);
       } catch {
         setIsDatabaseAvailable(false);
@@ -88,15 +88,15 @@ export function useOfflineSync(): UseOfflineSyncReturn {
     async (data: MonthlyData): Promise<boolean> => {
       try {
         const { error } = await supabase
-          .from("monthly_data")
+          .from("monthly_entries")
           .upsert(
             {
               year: data.year,
               month: data.month,
               indicator_code: data.indicator_code,
-              actual: data.actual,
-              remarks: data.remarks,
-              entered_by: data.entered_by,
+              value: data.actual,
+              remark: data.remarks,
+              reported_by: data.entered_by,
               updated_at: new Date().toISOString(),
             },
             {

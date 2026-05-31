@@ -63,7 +63,7 @@ export class InputValidator {
    * Validate indicator code format
    */
   static isValidIndicatorCode(code: string): boolean {
-    return /^[A-Z]{2,4}_[A-Z]{2,4}_\d{2}$/.test(code);
+    return /^[A-Z0-9_]+$/.test(code);
   }
 
   /**
@@ -232,6 +232,11 @@ export class AuditLogger {
         if (error && import.meta.env.DEV) {
           console.error("[AUDIT] Failed to log:", error.message);
         }
+      })
+      .catch((error) => {
+        if (import.meta.env.DEV) {
+          console.error("[AUDIT] Failed to log network/fetch exception:", error);
+        }
       });
 
     if (import.meta.env.DEV) {
@@ -255,6 +260,11 @@ export class AuditLogger {
       .then(({ error }) => {
         if (error && import.meta.env.DEV) {
           console.error("[AUDIT] Failed to log security event:", error.message);
+        }
+      })
+      .catch((error) => {
+        if (import.meta.env.DEV) {
+          console.error("[AUDIT] Failed to log security event network/fetch exception:", error);
         }
       });
 

@@ -63,7 +63,7 @@ export class InputValidator {
    * Validate indicator code format
    */
   static isValidIndicatorCode(code: string): boolean {
-    return /^[A-Z]{2,4}_[A-Z]{2,4}_\d{2}$/.test(code);
+    return /^[A-Z0-9_]+$/.test(code);
   }
 
   /**

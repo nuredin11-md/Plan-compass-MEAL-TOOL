@@ -56,6 +56,13 @@ export interface HospitalPlanPerformance {
   updated_at?: string;
 }
 
+// Ethiopian months to convert correctly
+const MONTHS_ISO = [
+  "Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)", "Tikimt (Feb)",
+  "Hidar (Mar)", "Tahsas (Apr)", "Tir (May)", "Yekatit (Jun)",
+  "Megabit (Jul)", "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)"
+];
+
 export function useDatabase() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -167,7 +174,7 @@ export function useDatabase() {
         setError(null);
         const now = new Date().toISOString();
         // Store month as a textual month name in the DB to match `monthly_entries` schema
-        const monthName = MONTHS[month - 1] ?? String(month);
+        const monthName = MONTHS_ISO[month - 1] ?? String(month);
         const monthlyDataPayload = {
           year,
           month: monthName,
@@ -183,7 +190,7 @@ export function useDatabase() {
           id: `${year}-${month}-${indicator_code}`,
           ...monthlyDataPayload,
           created_at: now,
-        };
+        } as any;
         await saveMonthlyDataOffline(offlineData);
 
         // Try to sync to database
@@ -317,62 +324,62 @@ export function useDatabase() {
     []
   );
 
-    // Upsert a Plan row into hospital_plan_and_performance
-    const upsertHospitalPlan = useCallback(
-      async (
-        year: number,
-        indicator_code: string,
-        program_area: string,
-        sub_program: string,
-        indicator: string,
-        unit: string,
-        baseline: number,
-        target: number,
-        userId: string | null
-      ): Promise<HospitalPlanPerformance | null> => {
-        try {
-          setError(null);
-          const fiscal_year = `${year} EFY`;
-          const payload = {
-            category: program_area,
-            indicator_name: indicator_code,
-            fiscal_year,
-            metric_type: "Plan",
-            metric_value: target,
-            percentage_value: null,
-            status: unit,
-            remark: indicator,
-            created_at: new Date().toISOString(),
-          } as any;
+  // Upsert a Plan row into hospital_plan_and_performance
+  const upsertHospitalPlan = useCallback(
+    async (
+      year: number,
+      indicator_code: string,
+      program_area: string,
+      sub_program: string,
+      indicator: string,
+      unit: string,
+      baseline: number,
+      target: number,
+      userId: string | null
+    ): Promise<HospitalPlanPerformance | null> => {
+      try {
+        setError(null);
+        const fiscal_year = `${year} EFY`;
+        const payload = {
+          category: program_area,
+          indicator_name: indicator_code,
+          fiscal_year,
+          metric_type: "Plan",
+          metric_value: target,
+          percentage_value: null,
+          status: unit,
+          remark: indicator,
+          created_at: new Date().toISOString(),
+        } as any;
 
-          const data = await upsertHospitalPlanRow(payload);
-          return data as HospitalPlanPerformance;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Failed to save hospital plan';
-          setError(message);
-          if (import.meta.env.DEV) console.error('Error upserting hospital plan:', err);
-          return null;
-        }
-      },
-      []
-    );
+        const data = await upsertHospitalPlanRow(payload);
+        return data as HospitalPlanPerformance;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to save hospital plan';
+        setError(message);
+        if (import.meta.env.DEV) console.error('Error upserting hospital plan:', err);
+        return null;
+      }
+    },
+    []
+  );
 
-    const deleteHospitalPlan = useCallback(
-      async (year: number, indicator_code: string): Promise<boolean> => {
-        try {
-          setError(null);
-          const fiscal_year = `${year} EFY`;
-          await deleteHospitalPlanRow(fiscal_year, indicator_code);
-          return true;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Failed to delete hospital plan';
-          setError(message);
-          if (import.meta.env.DEV) console.error('Error deleting hospital plan:', err);
-          return false;
-        }
-      },
-      []
-    );
+  const deleteHospitalPlan = useCallback(
+    async (year: number, indicator_code: string): Promise<boolean> => {
+      try {
+        setError(null);
+        const fiscal_year = `${year} EFY`;
+        await deleteHospitalPlanRow(fiscal_year, indicator_code);
+        return true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to delete hospital plan';
+        setError(message);
+        if (import.meta.env.DEV) console.error('Error deleting hospital plan:', err);
+        return false;
+      }
+    },
+    []
+  );
 
   return {
     loading,
@@ -387,4 +394,3 @@ export function useDatabase() {
     deleteHospitalPlan,
   };
 }
-

@@ -28,6 +28,7 @@ export interface ActionPlan {
   responsiblePerson: string;
   deadline: string;
   progress: 'Not started' | 'In progress' | 'Completed';
+  priority?: 'High' | 'Medium' | 'Low';
 }
 
 export interface UserProfile {
@@ -44,4 +45,14 @@ export interface Notification {
   message: string;
   status: 'unread' | 'read';
   createdAt: string;
+}
+
+export interface AssessmentItem {
+  id: string; // matches UUID or key
+  section_name: string;
+  item_description: string;
+  weighting: number; // e.g. 0.35 (35%)
+  max_score: number; // e.g. 5
+  hint?: string;
+  guide_notes?: string;
 }

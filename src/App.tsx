@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { IndicatorsProvider } from "@/context/IndicatorsContext";
+import MfaGuard from "@/components/MfaGuard";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -42,7 +43,7 @@ const App = () => (
           <IndicatorsProvider>
             <Routes>
               <Route path="/auth" element={<AuthRoute />} />
-              <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+              <Route path="/" element={<ProtectedRoute><MfaGuard><Index /></MfaGuard></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </IndicatorsProvider>

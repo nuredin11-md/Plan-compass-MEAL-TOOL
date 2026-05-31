@@ -14,6 +14,8 @@ import {
   Info,
   LayoutDashboard,
   Video,
+  Cloud,
+  Shield,
 } from "lucide-react";
 import {
   Sidebar,
@@ -31,9 +33,8 @@ const navItems = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3, color: "text-blue-500" },
   { id: "workspace", label: "Analytics Workspace", icon: LayoutDashboard, color: "text-teal-500" },
   { id: "hospital-tracker", label: "Hospital KPI Tracker", icon: Activity, color: "text-rose-500" },
+  { id: "assessment-tool", label: "Facility Assessment", icon: ClipboardList, color: "text-indigo-500" },
   { id: "masterplan", label: "Master Plan", icon: ClipboardList, color: "text-purple-500" },
-  { id: "monthly", label: "Monthly Entry", icon: CalendarDays, color: "text-amber-500" },
-  { id: "import", label: "DHIS2 Import", icon: Upload, color: "text-green-500" },
   { id: "meeting-hub", label: "Meeting Hub", icon: Video, color: "text-purple-500" },
   { id: "backup", label: "Backup & Recovery", icon: HardDrive, color: "text-red-500" },
   { id: "feedback", label: "Dept. Feedback", icon: MessageSquareText, color: "text-orange-500" },

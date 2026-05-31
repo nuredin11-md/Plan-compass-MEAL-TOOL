@@ -8,7 +8,7 @@ import {
   Search, Filter, Plus, Trash2, Edit2, Check, X, Maximize2, Minimize2, 
   HelpCircle, Sparkles, ArrowUpDown, CalendarRange, TrendingUp, Landmark, ShieldCheck,
   Trophy, Settings, Activity, CheckSquare, Info, Save, RefreshCw, Sliders, ListTodo, BadgeAlert,
-  BarChart3, CheckCircle2, AlertTriangle, XCircle, Pencil, Download, Share2
+  BarChart3, CheckCircle2, AlertTriangle, XCircle, Pencil, Download, Share2, CalendarDays, Upload, ClipboardList
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import MonthlyDataTab from "@/components/MonthlyDataTab";
+import DHIS2ImportTab from "@/components/DHIS2ImportTab";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,6 +28,9 @@ interface Props {
   monthlyData: MonthlyEntry[];
   selectedYear: number;
   previousYearData: MonthlyEntry[];
+  setMonthlyData: React.Dispatch<React.SetStateAction<MonthlyEntry[]>>;
+  selectedEFY: string;
+  onEFYChange: (newEFY: string) => Promise<void>;
 }
 
 type SortField = "code" | "indicator" | "programArea" | "baseline" | "target" | "actual" | "percent";
@@ -40,7 +46,8 @@ const calculatePerformanceActual = getActualYTD;
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function MasterPlanTab({ monthlyData, selectedYear, previousYearData }: Props) {
+export default function MasterPlanTab({ monthlyData, selectedYear, previousYearData, setMonthlyData, selectedEFY, onEFYChange }: Props) {
+  const [activeSubTab, setActiveSubTab] = useState<"plan-grid" | "monthly-entry" | "dhis2-import">("plan-grid");
   const { indicators, isCustom, addIndicator, updateIndicator, removeIndicator } = useIndicators();
   const { user } = useAuth();
   const { upsertHospitalPlan, deleteHospitalPlan, fetchHospitalPerformanceData } = useDatabase();
@@ -274,14 +281,15 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       if (!window.confirm("Are you sure you want to delete this indicator?")) return;
       setDeletingCode(code);
       try {
-        await deleteHospitalPlan(selectedYear, code);
+        const ind = indicators.find((i) => i.code === code);
+        await deleteHospitalPlan(selectedYear, code, ind?.indicator);
         removeIndicator(code);
         toast.success("Indicator removed from all tabs");
       } catch {
         toast.error("Failed to delete — please try again");
       } finally { setDeletingCode(null); }
     },
-    [deleteHospitalPlan, removeIndicator, selectedYear]
+    [deleteHospitalPlan, removeIndicator, selectedYear, indicators]
   );
 
   const handleExportCSV = useCallback(() => {
@@ -332,137 +340,209 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
   const hasFilters = search || filterArea !== "all" || filterStatus !== "all";
 
   return (
-    <div className={cn("flex flex-col gap-4", isFullscreen && "fixed inset-0 z-50 bg-background p-4 overflow-hidden")}>
-      
-      {/* ── Toolbar ── */}
-      <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between">
-        <div className="flex flex-wrap gap-2 flex-1 min-w-0">
-          <div className="relative min-w-[200px] flex-1 max-w-[320px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <Input placeholder="Search code, name, area…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-8 text-sm bg-background border border-input text-foreground font-medium" />
-            {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>}
-          </div>
+    <div className="space-y-6 flex flex-col h-full w-full">
+      {/* Sub-tab selection bar */}
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-slate-900 text-white p-4 border border-slate-800 rounded-2xl shadow-lg">
+        <div>
+          <h2 className="text-sm font-extrabold tracking-tight text-white uppercase">Clinical Master Plan Workspace</h2>
+          <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+            Manage clinical targets, record Monthly Entries, or trigger a DHIS2 Import feed
+          </p>
+        </div>
 
-          <Select value={filterArea} onValueChange={setFilterArea}>
-            <SelectTrigger className="h-8 w-[180px] text-xs">
-              <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
-              <SelectValue placeholder="All Areas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Program Areas</SelectItem>
-              {uniqueProgramAreas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-            </SelectContent>
-          </Select>
+        {/* Sub-tab togglers list */}
+        <div className="flex bg-slate-950/80 p-1 rounded-xl border border-slate-800 gap-1 w-full sm:w-auto overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("plan-grid")}
+            className={`flex-grow sm:flex-grow-0 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap ${
+              activeSubTab === "plan-grid"
+                ? "bg-purple-600 text-white shadow-md ring-1 ring-white/10 font-extrabold"
+                : "text-slate-400 hover:text-white hover:bg-slate-900/40"
+            }`}
+          >
+            <ClipboardList className="h-3.5 w-3.5" />
+            <span>Clinical Master Plan</span>
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("monthly-entry")}
+            className={`flex-grow sm:flex-grow-0 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap ${
+              activeSubTab === "monthly-entry"
+                ? "bg-amber-500 text-white shadow-md ring-1 ring-white/10 font-extrabold"
+                : "text-slate-400 hover:text-white hover:bg-slate-900/40"
+            }`}
+          >
+            <CalendarDays className="h-3.5 w-3.5" />
+            <span>Monthly Entry Sheet</span>
+          </button>
 
-          {(["all", "green", "yellow", "red"] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setFilterStatus(s)}
-              className={cn(
-                "h-8 px-3 rounded-md text-xs font-semibold border transition-all cursor-pointer",
-                filterStatus === s
-                  ? s === "all" ? "bg-primary text-primary-foreground border-primary" : s === "green" ? "bg-emerald-600 text-white border-emerald-600" : s === "yellow" ? "bg-amber-500 text-white border-amber-500" : "bg-red-500 text-white border-red-500"
-                  : "bg-background text-muted-foreground border-input hover:bg-muted"
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("dhis2-import")}
+            className={`flex-grow sm:flex-grow-0 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap ${
+              activeSubTab === "dhis2-import"
+                ? "bg-green-600 text-white shadow-md ring-1 ring-white/10 font-extrabold"
+                : "text-slate-400 hover:text-white hover:bg-slate-900/40"
+            }`}
+          >
+            <Upload className="h-3.5 w-3.5" />
+            <span>DHIS2 Import Hub</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-grow w-full">
+        {activeSubTab === "plan-grid" ? (
+          <div className={cn("flex flex-col gap-4", isFullscreen && "fixed inset-0 z-50 bg-background p-4 overflow-hidden")}>
+            
+            {/* ── Toolbar ── */}
+            <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between">
+              <div className="flex flex-wrap gap-2 flex-1 min-w-0">
+                <div className="relative min-w-[200px] flex-1 max-w-[320px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input placeholder="Search code, name, area…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-8 text-sm bg-background border border-input text-foreground font-medium" />
+                  {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>}
+                </div>
+
+                <Select value={filterArea} onValueChange={setFilterArea}>
+                  <SelectTrigger className="h-8 w-[180px] text-xs">
+                    <Filter className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                    <SelectValue placeholder="All Areas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Program Areas</SelectItem>
+                    {uniqueProgramAreas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+
+                {(["all", "green", "yellow", "red"] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setFilterStatus(s)}
+                    className={cn(
+                      "h-8 px-3 rounded-md text-xs font-semibold border transition-all cursor-pointer",
+                      filterStatus === s
+                        ? s === "all" ? "bg-primary text-primary-foreground border-primary" : s === "green" ? "bg-emerald-600 text-white border-emerald-600" : s === "yellow" ? "bg-amber-500 text-white border-amber-500" : "bg-red-500 text-white border-red-500"
+                        : "bg-background text-muted-foreground border-input hover:bg-muted"
+                    )}
+                  >
+                    {s === "all" ? "All" : s === "green" ? "✓ On Track" : s === "yellow" ? "⚠ At Risk" : "✕ Off Track"}
+                  </button>
+                ))}
+
+                {hasFilters && (
+                  <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 gap-1.5 text-xs text-muted-foreground">
+                    <RefreshCw className="h-3.5 w-3.5" />Clear
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex gap-1.5 shrink-0">
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleExportCSV}>
+                  <Download className="h-3.5 w-3.5" />Export
+                </Button>
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs text-purple-700 bg-purple-50 hover:bg-purple-100 hover:text-purple-800 border-purple-200 font-semibold" onClick={handleShareToHub}>
+                  <Share2 className="h-3.5 w-3.5" /> Share Plan to Hub
+                </Button>
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setIsFullscreen(!isFullscreen)}>
+                  {isFullscreen ? <><Minimize2 className="h-3.5 w-3.5" />Exit</> : <><Maximize2 className="h-3.5 w-3.5" />Expand</>}
+                </Button>
+                <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="h-8 gap-1.5 text-xs">
+                      <Plus className="h-3.5 w-3.5" />Add Indicator
+                    </Button>
+                  </DialogTrigger>
+                  <AddIndicatorModal uniqueProgramAreas={uniqueProgramAreas} uniqueSubPrograms={uniqueSubPrograms} onAdd={handleAdd} onClose={() => setIsAddOpen(false)} />
+                </Dialog>
+              </div>
+            </div>
+
+            {/* ── Table ── */}
+            <div className={cn("rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col", isFullscreen && "flex-1 min-h-0")}>
+              <div className="overflow-x-auto overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-muted-foreground/25 scrollbar-track-transparent">
+                <table className="w-full min-w-[1100px] text-xs border-collapse table-auto">
+                  <thead className="sticky top-0 z-30 bg-muted/90 backdrop-blur-sm border-b">
+                    <tr>
+                      <SortTh field="code" label="Code" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="border-r text-left w-[110px] min-w-[110px] max-w-[110px] break-all" />
+                      <SortTh field="indicator" label="Indicator" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="border-r text-left max-w-[280px] w-[280px] min-w-[200px]" />
+                      <SortTh field="programArea" label="Program Area" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-left min-w-[140px] pl-4" />
+                      <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-left min-w-[110px]">Sub-program</th>
+                      <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[60px]">Unit</th>
+                      <SortTh field="baseline" label="Baseline" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[80px]" />
+                      <SortTh field="target" label="Target" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[80px]" />
+                      <SortTh field="actual" label="Actual" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[80px]" />
+                      <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-left min-w-[150px]">Progress</th>
+                      <SortTh field="percent" label="YoY" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-center w-[75px]" />
+                      <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[85px]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y bg-background">
+                    {rows.map((row) => (
+                      <tr key={`${row.code}-${row.indicator}`} className="hover:bg-muted/50 transition-colors group">
+                        <td className="p-3 font-mono text-xs font-semibold border-r text-primary text-left bg-background group-hover:bg-slate-50/80 w-[110px] min-w-[110px] max-w-[110px] break-all">
+                          {row.code}
+                        </td>
+                        <td className="p-3 text-left font-medium max-w-[280px] w-[280px] min-w-[200px] whitespace-normal break-words border-r text-foreground bg-background group-hover:bg-slate-50/80" title={row.indicator}>
+                          <div className="line-clamp-3 text-xs leading-normal font-medium text-slate-800">{row.indicator}</div>
+                        </td>
+                        <td className="p-3 text-left text-muted-foreground text-xs pl-4">{row.programArea}</td>
+                        <td className="p-3 text-left text-muted-foreground text-xs">{row.subProgram || "General"}</td>
+                        <td className="p-3 text-center font-mono text-xs text-muted-foreground">{row.unit}</td>
+                        <td className="p-3 text-right font-mono font-semibold text-slate-500 tabular-nums">{row.baseline}</td>
+                        <td className="p-3 text-right font-mono font-semibold tabular-nums">{row.target}</td>
+                        <td className="p-3 text-right font-mono font-semibold text-indigo-600 tabular-nums">{row.actual}</td>
+                        <td className="p-3 text-left"><ProgressBar percent={row.percent} /></td>
+                        <td className="p-3 text-center"><YoYChip current={row.percent} previous={row.prevPercent} /></td>
+                        <td className="p-3 text-center bg-background group-hover:bg-slate-50/80 border-l w-[85px]">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button size="icon" variant="ghost" className="h-7 w-7 opacity-60 hover:opacity-100" onClick={() => setEditingIndicator(row)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 opacity-60 hover:opacity-100" onClick={() => handleDelete(row.code)} disabled={deletingCode === row.code}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Edit Dialog rendering */}
+            <Dialog open={!!editingIndicator} onOpenChange={(o) => { if (!o) setEditingIndicator(null); }}>
+              {editingIndicator && (
+                <EditIndicatorModal
+                  indicator={editingIndicator}
+                  isCustomIndicator={isCustom(editingIndicator.code)}
+                  uniqueProgramAreas={uniqueProgramAreas}
+                  uniqueSubPrograms={uniqueSubPrograms}
+                  onSave={handleSaveEdit}
+                  onClose={() => setEditingIndicator(null)}
+                />
               )}
-            >
-              {s === "all" ? "All" : s === "green" ? "✓ On Track" : s === "yellow" ? "⚠ At Risk" : "✕ Off Track"}
-            </button>
-          ))}
-
-          {hasFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 gap-1.5 text-xs text-muted-foreground">
-              <RefreshCw className="h-3.5 w-3.5" />Clear
-            </Button>
-          )}
-        </div>
-
-        <div className="flex gap-1.5 shrink-0">
-          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleExportCSV}>
-            <Download className="h-3.5 w-3.5" />Export
-          </Button>
-          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs text-purple-700 bg-purple-50 hover:bg-purple-100 hover:text-purple-800 border-purple-200 font-semibold" onClick={handleShareToHub}>
-            <Share2 className="h-3.5 w-3.5" /> Share Plan to Hub
-          </Button>
-          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setIsFullscreen(!isFullscreen)}>
-            {isFullscreen ? <><Minimize2 className="h-3.5 w-3.5" />Exit</> : <><Maximize2 className="h-3.5 w-3.5" />Expand</>}
-          </Button>
-          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="h-8 gap-1.5 text-xs">
-                <Plus className="h-3.5 w-3.5" />Add Indicator
-              </Button>
-            </DialogTrigger>
-            <AddIndicatorModal uniqueProgramAreas={uniqueProgramAreas} uniqueSubPrograms={uniqueSubPrograms} onAdd={handleAdd} onClose={() => setIsAddOpen(false)} />
-          </Dialog>
-        </div>
-      </div>
-
-      {/* ── Table ── */}
-      <div className={cn("rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col", isFullscreen && "flex-1 min-h-0")}>
-        <div className="overflow-x-auto overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-muted-foreground/25 scrollbar-track-transparent">
-          <table className="w-full min-w-[1100px] text-xs border-collapse table-auto">
-            <thead className="sticky top-0 z-30 bg-muted/90 backdrop-blur-sm border-b">
-              <tr>
-                <SortTh field="code" label="Code" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="border-r text-left w-[85px] min-w-[85px]" />
-                <SortTh field="indicator" label="Indicator" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="border-r text-left max-w-[280px] w-[280px] min-w-[200px]" />
-                <SortTh field="programArea" label="Program Area" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-left min-w-[140px] pl-4" />
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-left min-w-[110px]">Sub-program</th>
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[60px]">Unit</th>
-                <SortTh field="baseline" label="Baseline" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[80px]" />
-                <SortTh field="target" label="Target" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[80px]" />
-                <SortTh field="actual" label="Actual" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right w-[80px]" />
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-left min-w-[150px]">Progress</th>
-                <SortTh field="percent" label="YoY" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-center w-[75px]" />
-                <th className="p-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center w-[85px]">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y bg-background">
-              {rows.map((row) => (
-                <tr key={`${row.code}-${row.indicator}`} className="hover:bg-muted/50 transition-colors group">
-                  <td className="p-3 font-mono text-xs font-semibold border-r text-primary text-left bg-background group-hover:bg-slate-50/80 w-[85px] min-w-[85px]">
-                    {row.code}
-                  </td>
-                  <td className="p-3 text-left font-medium max-w-[280px] w-[280px] min-w-[200px] whitespace-normal break-words border-r text-foreground bg-background group-hover:bg-slate-50/80" title={row.indicator}>
-                    <div className="line-clamp-3 text-xs leading-normal font-medium text-slate-800">{row.indicator}</div>
-                  </td>
-                  <td className="p-3 text-left text-muted-foreground text-xs pl-4">{row.programArea}</td>
-                  <td className="p-3 text-left text-muted-foreground text-xs">{row.subProgram || "General"}</td>
-                  <td className="p-3 text-center font-mono text-xs text-muted-foreground">{row.unit}</td>
-                  <td className="p-3 text-right font-mono font-semibold text-slate-500 tabular-nums">{row.baseline}</td>
-                  <td className="p-3 text-right font-mono font-semibold tabular-nums">{row.target}</td>
-                  <td className="p-3 text-right font-mono font-semibold text-indigo-600 tabular-nums">{row.actual}</td>
-                  <td className="p-3 text-left"><ProgressBar percent={row.percent} /></td>
-                  <td className="p-3 text-center"><YoYChip current={row.percent} previous={row.prevPercent} /></td>
-                  <td className="p-3 text-center bg-background group-hover:bg-slate-50/80 border-l w-[85px]">
-                    <div className="flex items-center justify-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7 opacity-60 hover:opacity-100" onClick={() => setEditingIndicator(row)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 opacity-60 hover:opacity-100" onClick={() => handleDelete(row.code)} disabled={deletingCode === row.code}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Edit Dialog rendering */}
-      <Dialog open={!!editingIndicator} onOpenChange={(o) => { if (!o) setEditingIndicator(null); }}>
-        {editingIndicator && (
-          <EditIndicatorModal
-            indicator={editingIndicator}
-            isCustomIndicator={isCustom(editingIndicator.code)}
-            uniqueProgramAreas={uniqueProgramAreas}
-            uniqueSubPrograms={uniqueSubPrograms}
-            onSave={handleSaveEdit}
-            onClose={() => setEditingIndicator(null)}
+            </Dialog>
+          </div>
+        ) : activeSubTab === "monthly-entry" ? (
+          <MonthlyDataTab
+            monthlyData={monthlyData}
+            setMonthlyData={setMonthlyData}
+            selectedYear={selectedYear}
+            selectedEFY={selectedEFY}
+            onEFYChange={onEFYChange}
+            indicators={rows}
+          />
+        ) : (
+          <DHIS2ImportTab
+            monthlyData={monthlyData}
+            setMonthlyData={setMonthlyData}
           />
         )}
-      </Dialog>
+      </div>
     </div>
   );
 }

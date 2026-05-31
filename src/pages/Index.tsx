@@ -8,9 +8,7 @@ import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import MasterPlanTab from "@/components/MasterPlanTab";
-import MonthlyDataTab from "@/components/MonthlyDataTab";
 import DashboardTab from "@/components/DashboardTab";
-import DHIS2ImportTab from "@/components/DHIS2ImportTab";
 import FeedbackTab from "@/components/FeedbackTab";
 import MeetingHubTab from "@/components/MeetingHubTab";
 import BackupRecoveryTab from "@/components/BackupRecoveryTab";
@@ -19,6 +17,7 @@ import ExportButton from "@/components/ExportButton";
 import AboutUsTab from "@/components/AboutUsTab";
 import WorkspaceTab from "@/components/WorkspaceTab";
 import HospitalKPITracker from "@/components/HospitalKPITracker/HospitalKPITrackerApp";
+import FacilityAssessmentContainer from "@/components/assessment/FacilityAssessmentContainer";
 import { BackupManager } from "@/lib/backupUtils";
 import { AuditLogger } from "@/lib/securityUtils";
 import { mergeMonthlyData, convertMonthlyDataToEntries } from "@/lib/databaseSync";
@@ -242,25 +241,15 @@ const Index = () => {
             previousYearData={
               yearlyData[getPreviousEFY(selectedEFY)] || []
             }
+            setMonthlyData={setMonthlyData}
+            selectedEFY={selectedEFY}
+            onEFYChange={handleEFYChange}
           />
         );
       case "hospital-tracker":
         return <HospitalKPITracker />;
-      case "monthly":
-        return (
-          <MonthlyDataTab
-            monthlyData={monthlyData}
-            setMonthlyData={setMonthlyData}
-            selectedYear={selectedYear}
-          />
-        );
-      case "import":
-        return (
-          <DHIS2ImportTab
-            monthlyData={monthlyData}
-            setMonthlyData={setMonthlyData}
-          />
-        );
+      case "assessment-tool":
+        return <FacilityAssessmentContainer />;
       case "meeting-hub":
         return <MeetingHubTab monthlyData={monthlyData} />;
       case "backup":
@@ -286,7 +275,7 @@ const Index = () => {
 
         <div className="flex-1 flex flex-col min-w-0">
           {/* Header */}
-          {activeTab !== "hospital-tracker" && (
+          {activeTab !== "hospital-tracker" && activeTab !== "assessment-tool" && (
             <header className="bg-[#0f172a] text-white sticky top-0 z-40 border-b border-white/10 shadow-lg">
               <div className="px-4 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
