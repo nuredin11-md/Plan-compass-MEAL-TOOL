@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import {
@@ -40,18 +40,26 @@ export function exportToCSV(rows: Record<string, string | number>[], filename: s
 }
 
 // ─── Excel Export ───
-export function exportToExcel(sheets: { name: string; data: Record<string, string | number>[] }[], filename: string) {
-  const wb = XLSX.utils.book_new();
+export async function exportToExcel(sheets: { name: string; data: Record<string, string | number>[] }[], filename: string) {
+  const workbook = new ExcelJS.Workbook();
   sheets.forEach(({ name, data }) => {
-    const ws = XLSX.utils.json_to_sheet(data);
-    // Auto-size columns
-    const colWidths = Object.keys(data[0] || {}).map((key) => ({
-      wch: Math.max(key.length, ...data.map((r) => String(r[key] ?? "").length)).valueOf(),
+    const worksheet = workbook.addWorksheet(name.substring(0, 31));
+    const columns = Object.keys(data[0] || {}).map((key) => ({
+      header: key,
+      key,
+      width: Math.max(key.length, ...data.map((r) => String(r[key] ?? "").length)) + 2,
     }));
-    ws["!cols"] = colWidths;
-    XLSX.utils.book_append_sheet(wb, ws, name.substring(0, 31));
+    worksheet.columns = columns;
+    data.forEach((row) => {
+      worksheet.addRow(row);
+    });
   });
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  downloadBlobFromBlob(blob, `${filename}.xlsx`);
 }
 
 // ─── PDF Export ───
@@ -218,6 +226,15 @@ export function getPeriodicPerformanceFeedback(
 // ─── Utility ───
 function downloadBlob(content: string, filename: string, type: string) {
   const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadBlobFromBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

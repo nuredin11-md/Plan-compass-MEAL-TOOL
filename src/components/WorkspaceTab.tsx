@@ -517,7 +517,7 @@ export default function WorkspaceTab({
   }, [groupBy, deptSummary, indicatorPerformance]);
  
   const handleExport = useCallback(
-    (format: "csv" | "excel" | "pdf") => {
+    async (format: "csv" | "excel" | "pdf") => {
       const data = getTableExportData();
       const filename = `Analytics_${groupBy}_${new Date().toISOString().split("T")[0]}`;
       try {
@@ -525,7 +525,7 @@ export default function WorkspaceTab({
           exportToCSV(data, filename);
           toast.success("Exported as CSV");
         } else if (format === "excel") {
-          exportToExcel(
+          await exportToExcel(
             [
               {
                 name: "Department Summary",

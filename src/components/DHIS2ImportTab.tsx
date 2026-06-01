@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import Papa from "papaparse";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { MONTHS, type MonthlyEntry } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
 import { Button } from "@/components/ui/button";
@@ -93,7 +93,7 @@ export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
     const ext = file.name.split(".").pop()?.toLowerCase();
     
     // Validate file extension
-    if (!["csv", "xlsx", "xls"].includes(ext || "")) {
+    if (!["csv", "xlsx"].includes(ext || "")) {
       toast.error("Please upload a CSV or Excel (.xlsx) file");
       AuditLogger.logSecurityEvent("system", "FILE_UPLOAD_REJECTED", `Invalid file type: ${ext}`);
       return;
@@ -118,13 +118,32 @@ export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
           AuditLogger.logSecurityEvent("system", "FILE_PARSE_ERROR", `CSV parse error: ${error?.message || "unknown"}`);
         }
       });
-    } else if (ext === "xlsx" || ext === "xls") {
+    } else if (ext === "xlsx") {
       const reader = new FileReader();
-      reader.onload = (evt) => {
+      reader.onload = async (evt) => {
         try {
-          const wb = XLSX.read(evt.target?.result, { type: "binary" });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          const data = XLSX.utils.sheet_to_json<ParsedRow>(ws);
+          const arrayBuffer = evt.target?.result;
+          if (!(arrayBuffer instanceof ArrayBuffer)) {
+            throw new Error("Invalid Excel file data");
+          }
+
+          const workbook = new ExcelJS.Workbook();
+          await workbook.xlsx.load(arrayBuffer);
+          const worksheet = workbook.worksheets[0];
+          const data: ParsedRow[] = [];
+
+          const headerRow = worksheet.getRow(1);
+          const headers = headerRow.values.slice(1).map((value) => String(value || ""));
+
+          worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return;
+            const rowData: ParsedRow = {};
+            row.values.slice(1).forEach((value, index) => {
+              rowData[headers[index]] = value as string | number;
+            });
+            data.push(rowData);
+          });
+
           const cols = data.length > 0 ? Object.keys(data[0]) : [];
           setParsedData(data);
           setAvailableColumns(cols);
@@ -139,7 +158,7 @@ export default function DHIS2ImportTab({ monthlyData, setMonthlyData }: Props) {
           AuditLogger.logSecurityEvent("system", "FILE_PARSE_ERROR", `Excel parse error: ${String(error)}`);
         }
       };
-      reader.readAsBinaryString(file);
+      reader.readAsArrayBuffer(file);
     }
   }, []);
 

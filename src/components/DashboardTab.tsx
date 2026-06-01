@@ -222,7 +222,7 @@ export default function DashboardTab({ monthlyData }: Props) {
     toast.success(`Exported dataset of "${widget.title}" to CSV`);
   };
 
-  const handleDownloadExcel = (widget: DashboardWidget) => {
+  const handleDownloadExcel = async (widget: DashboardWidget) => {
     let rows: any[] = [];
     if (widget.chartType === "dept-table") {
       rows = widget.data.map(d => ({
@@ -247,7 +247,7 @@ export default function DashboardTab({ monthlyData }: Props) {
       rows = widget.data;
     }
 
-    exportToExcel([{ name: "Performance Reports", data: rows }], widget.title.replace(/\s+/g, "_") + "_Standard");
+    await exportToExcel([{ name: "Performance Reports", data: rows }], widget.title.replace(/\s+/g, "_") + "_Standard");
     toast.success(`Exported spreadsheet for "${widget.title}" to Excel (.xlsx)`);
   };
 
@@ -293,7 +293,7 @@ export default function DashboardTab({ monthlyData }: Props) {
   };
 
   // Full Dashboard Bulk Export to Excel Workbook
-  const handleBulkExportWorkbook = () => {
+  const handleBulkExportWorkbook = async () => {
     const sheets = widgets.map(w => {
       return {
         name: w.title.substring(0, 30),
@@ -304,7 +304,7 @@ export default function DashboardTab({ monthlyData }: Props) {
       toast.warning("Dashboard contains no visual report sheets to compile.");
       return;
     }
-    exportToExcel(sheets, "Full_Hospital_Clinical_Dashboard_Bulk");
+    await exportToExcel(sheets, "Full_Hospital_Clinical_Dashboard_Bulk");
     toast.success("Compiled full dynamic workspace widgets into Excel book sheets successfully!");
   };
 

@@ -1,0 +1,6 @@
+# Environment configuration for Plan Compass
+VITE_SUPABASE_URL=https://lnupjvigwccpoyookrvg.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_0477GupnbdKDmpLYIOjZPw_VjH_jb9z
+GEMINI_API_KEY=MY_GEMINI_API_KEY
+PORT=3000
+NODE_ENV=development

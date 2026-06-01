@@ -10,7 +10,7 @@ interface Props {
 }
 
 export default function ExportButton({ monthlyData, type }: Props) {
-  const handleExport = (format: "csv" | "excel" | "pdf") => {
+  const handleExport = async (format: "csv" | "excel" | "pdf") => {
     if (type === "masterplan") {
       const data = getMasterPlanExportData(monthlyData);
       const filename = `Hospital_Master_Plan_${new Date().toISOString().split("T")[0]}`;
@@ -19,7 +19,7 @@ export default function ExportButton({ monthlyData, type }: Props) {
         exportToCSV(data, filename);
       } else if (format === "excel") {
         const monthlyExport = getMonthlyExportData(monthlyData);
-        exportToExcel(
+        await exportToExcel(
           [
             { name: "Master Plan", data },
             { name: "Monthly Data", data: monthlyExport },

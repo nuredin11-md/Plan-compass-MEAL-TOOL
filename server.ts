@@ -415,9 +415,27 @@ Return exactly a JSON object matching this schema:
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Hospital KPI Server running on http://localhost:${PORT}`);
-  });
+  // Attempt to listen on the configured port, but if it's in use try the next ports.
+  const startPort = Number(process.env.PORT) || PORT;
+  const maxAttempts = 10;
+
+  const tryListen = (port: number, attemptsLeft: number) => {
+    const server = app.listen(port, "0.0.0.0", () => {
+      console.log(`Hospital KPI Server running on http://localhost:${port}`);
+    });
+
+    server.on("error", (err: any) => {
+      if (err && err.code === "EADDRINUSE" && attemptsLeft > 0) {
+        console.warn(`Port ${port} in use, trying ${port + 1}...`);
+        tryListen(port + 1, attemptsLeft - 1);
+      } else {
+        console.error("Server failed to start:", err);
+        process.exit(1);
+      }
+    });
+  };
+
+  tryListen(startPort, maxAttempts);
 }
 
 // Highly relevant, hospital-specific fallback generator for different KPIs
