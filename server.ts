@@ -75,7 +75,7 @@ Strictly return a JSON object with this exact structure:
 }`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-1.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json"
@@ -198,7 +198,7 @@ Strictly respond with valid JSON ONLY. No markdown wrappers. Return exactly a JS
 }`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-1.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json"
@@ -285,7 +285,7 @@ Strictly respond with valid JSON ONLY. No markdown wrappers. Return exactly a JS
 }`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-1.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json"
@@ -370,7 +370,7 @@ Return exactly a JSON object matching this schema:
 }`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-1.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json"
