@@ -70,8 +70,6 @@ This project is proprietary. All rights reserved.
 
 © 2026 Plan Compass Development Team.
 
----
-
 ### Running Development Server
 
 ```bash
