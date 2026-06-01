@@ -11,9 +11,10 @@ export interface HospitalDBRow {
   metric_type: string;
   metric_value?: number | null;
   percentage_value?: number | null;
-  status?: string;
+  status?: string | null;
   remark?: string | null;
-  created_at?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 // ─── Fetch from Supabase ──────────────────────────────────────────────────────
