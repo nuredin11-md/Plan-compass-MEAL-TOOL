@@ -69,12 +69,20 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     (async () => {
       setLoadingDb(true);
       try {
+        console.log(`[MasterPlanTab] Fetching hospital performance data for year: ${selectedYear}`);
         const data = await fetchHospitalPerformanceData();
         if (active) {
+          console.log(`[MasterPlanTab] Received ${data?.length || 0} performance rows from Supabase`);
+          if (data && data.length > 0) {
+            console.log("[MasterPlanTab] Sample data:", data.slice(0, 2));
+          } else {
+            console.warn("[MasterPlanTab] No data returned from fetchHospitalPerformanceData");
+          }
           setDbPerformanceRows(data);
         }
       } catch (err) {
-        console.error("Failed to load performance rows in MasterPlan:", err);
+        console.error("[MasterPlanTab] Failed to load performance rows:", err);
+        toast.error("Failed to load hospital plan data from database");
       } finally {
         if (active) setLoadingDb(false);
       }

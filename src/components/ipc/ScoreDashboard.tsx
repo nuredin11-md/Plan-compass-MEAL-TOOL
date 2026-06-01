@@ -1,8 +1,9 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { useIPCAssessment } from "@/hooks/useIPCAssessment";
 import { 
   BarChart as RechartsBarChart, 
   Bar, 
@@ -91,6 +92,10 @@ function ScoreGauge({ percentage, label, size = "lg" }: { percentage: number; la
 }
 
 export default function ScoreDashboard({ data, hospitalInfo }: Props) {
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isSubmitting, setIsSubmittingState] = useState(false);
+  const { saveIPCAssessment } = useIPCAssessment();
+  
   const s1Score = useMemo(() => calculateSectionScore(sectionI, data), [data]);
   const s2Score = useMemo(() => calculateSectionScore(sectionII, data), [data]);
 
@@ -98,6 +103,48 @@ export default function ScoreDashboard({ data, hospitalInfo }: Props) {
     const totalApplicable = s1Score.applicable + s2Score.applicable;
     return totalApplicable > 0 ? ((s1Score.totalYes + s2Score.totalYes) / totalApplicable) * 100 : 0;
   }, [s1Score, s2Score]);
+
+  // Handle saving draft to Supabase
+  const handleSaveDraft = async () => {
+    setIsSavingDraft(true);
+    try {
+      const result = await saveIPCAssessment(
+        hospitalInfo,
+        data,
+        s1Score.totalYes + s2Score.totalYes,
+        overallPct,
+        'draft',
+        s1Score.percentage,
+        s2Score.percentage
+      );
+      if (result.success) {
+        console.log("Draft saved with ID:", result.id);
+      }
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  // Handle submitting final assessment to Supabase
+  const handleSubmitAssessment = async () => {
+    setIsSubmittingState(true);
+    try {
+      const result = await saveIPCAssessment(
+        hospitalInfo,
+        data,
+        s1Score.totalYes + s2Score.totalYes,
+        overallPct,
+        'submitted',
+        s1Score.percentage,
+        s2Score.percentage
+      );
+      if (result.success) {
+        console.log("Assessment submitted with ID:", result.id);
+      }
+    } finally {
+      setIsSubmittingState(false);
+    }
+  };
 
   const overallLevel = getScoreLevel(overallPct);
 
@@ -224,14 +271,25 @@ export default function ScoreDashboard({ data, hospitalInfo }: Props) {
               </p>
             </div>
 
-            {/* CSV export action button */}
-            <Button 
-              type="button"
-              onClick={exportToCSV} 
-              className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold gap-2 px-4 shadow-sm h-9 rounded-lg shrink-0 cursor-pointer transition-all hover:translate-y-[-1px]"
-            >
-              <FileSpreadsheet className="h-4 w-4" /> Export Audit to CSV
-            </Button>
+            {/* Action buttons */}
+            <div className="flex flex-col md:flex-row gap-2 shrink-0">
+              <Button 
+                type="button"
+                onClick={handleSaveDraft}
+                disabled={isSavingDraft}
+                className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-bold gap-2 px-4 shadow-sm h-9 rounded-lg cursor-pointer transition-all hover:translate-y-[-1px] disabled:opacity-50"
+              >
+                <FileSpreadsheet className="h-4 w-4" /> {isSavingDraft ? "Saving..." : "Save Draft"}
+              </Button>
+              <Button 
+                type="button"
+                onClick={handleSubmitAssessment}
+                disabled={isSubmitting}
+                className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold gap-2 px-4 shadow-sm h-9 rounded-lg cursor-pointer transition-all hover:translate-y-[-1px] disabled:opacity-50"
+              >
+                <FileSpreadsheet className="h-4 w-4" /> {isSubmitting ? "Submitting..." : "Submit Audit"}
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
