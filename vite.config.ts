@@ -4,7 +4,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
   return {
-    base: '/',
+    base: process.env.NODE_ENV === 'production' ? '/Plan-compass-MEAL-TOOL/' : '/',
     plugins: [react()],
     resolve: {
       alias: {
