@@ -55,23 +55,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchingProfileRef.current = true;
 
     try {
-      const { data: profileData } = await supabase
+      const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("display_name, department")
         .eq("user_id", userId)
         .single();
 
-      const { data: roleData } = await supabase
+      if (profileError && profileError.code !== "PGRST116") {
+        // PGRST116 = no rows returned, which is expected if profile hasn't been created
+        console.error("Error fetching profile:", profileError);
+      }
+
+      const { data: roleData, error: roleError } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", userId)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
-      setProfile(profileData);
+      if (roleError && roleError.code !== "PGRST116") {
+        console.error("Error fetching role:", roleError);
+      }
+
+      // Use fetched data or set defaults
+      setProfile(profileData || { display_name: "User", department: "Health System Strengthening" });
       setRole(roleData?.role ?? "viewer");
       await refreshAal();
     } catch (err) {
-      console.error("Error fetching profile:", err);
+      console.error("Error fetching profile/role:", err);
+      // Set sensible defaults on error
+      setProfile({ display_name: "User", department: "Health System Strengthening" });
+      setRole("viewer");
     } finally {
       fetchingProfileRef.current = false;
     }
