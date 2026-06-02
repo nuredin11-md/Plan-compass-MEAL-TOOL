@@ -34,8 +34,8 @@ const tabs: TabOption[] = [
   },
   {
     id: "hospital-data",
-    label: "Hospital Data Checklist",
-    description: "HIS audit checklist wizard",
+    label: "HIS Assessment Tool",
+    description: "HIS governance, data quality and M&E infrastructure audit",
     icon: <ClipboardList className="h-4 w-4" />,
     color: "text-slate-400",
   },

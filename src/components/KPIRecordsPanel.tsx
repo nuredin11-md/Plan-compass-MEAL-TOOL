@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 interface KPIRecordsPanelProps {
   kpis: KPIDefinition[];
   records: KPIRecord[];
-  onUpdateActual: (month: string, kpiId: number, actualValue: number) => void;
+  onUpdateActual: (record: KPIRecord) => void;
   onAddMonth: (month: string) => void;
   onResetToDefaults: () => void;
 }
@@ -346,7 +346,19 @@ export default function KPIRecordsPanel({
   const handleInputChange = (kpiId: number, valueStr: string) => {
     const val = valueStr === '' ? 0 : parseFloat(valueStr);
     if (!isNaN(val)) {
-      onUpdateActual(activePeriod, kpiId, val);
+      const existing = records.find(r => r.kpiId === kpiId && r.month === activePeriod);
+      const kpi = kpis.find(k => k.id === kpiId);
+      const { score, gap, status } = kpi ? calculateKPIScore(kpi, val) : { score: val, gap: 0, status: val >= 0 ? 'OK' : 'GAP' };
+      const record: KPIRecord = {
+        id: existing?.id,
+        kpiId,
+        month: activePeriod,
+        actualValue: val,
+        calculatedScore: score,
+        gap,
+        status,
+      };
+      onUpdateActual(record);
     }
   };
 

@@ -155,6 +155,132 @@ export type Database = {
         }
         Relationships: []
       }
+      hospital_kpi_definitions: {
+        Row: {
+          created_at: string | null
+          id: number
+          measure: string | null
+          name: string
+          rules: Json | null
+          target: number
+          type: string
+          updated_at: string | null
+          weight: number
+          category: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          id?: number
+          measure?: string | null
+          name: string
+          rules?: Json | null
+          target: number
+          type: string
+          updated_at?: string | null
+          weight: number
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          id?: number
+          measure?: string | null
+          name?: string
+          rules?: Json | null
+          target?: number
+          type?: string
+          updated_at?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      hospital_kpi_records: {
+        Row: {
+          calculated_score: number | null
+          created_at: string | null
+          gap: number | null
+          id: string
+          kpi_id: number
+          month: string
+          status: string
+          updated_at: string | null
+          user_id: string | null
+          actual_value: number
+        }
+        Insert: {
+          calculated_score?: number | null
+          created_at?: string | null
+          gap?: number | null
+          id?: string
+          kpi_id: number
+          month: string
+          status: string
+          updated_at?: string | null
+          user_id?: string | null
+          actual_value: number
+        }
+        Update: {
+          calculated_score?: number | null
+          created_at?: string | null
+          gap?: number | null
+          id?: string
+          kpi_id?: number
+          month?: string
+          status?: string
+          updated_at?: string | null
+          user_id?: string | null
+          actual_value?: number
+        }
+        Relationships: []
+      }
+      hospital_action_plans: {
+        Row: {
+          corrective_action: string | null
+          created_at: string | null
+          deadline: string | null
+          gap_description: string
+          id: string
+          kpi_id: number
+          month: string
+          priority: string | null
+          progress: string
+          responsible_person: string | null
+          root_cause: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          corrective_action?: string | null
+          created_at?: string | null
+          deadline?: string | null
+          gap_description: string
+          id?: string
+          kpi_id: number
+          month: string
+          priority?: string | null
+          progress?: string
+          responsible_person?: string | null
+          root_cause?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          corrective_action?: string | null
+          created_at?: string | null
+          deadline?: string | null
+          gap_description?: string
+          id?: string
+          kpi_id?: number
+          month?: string
+          priority?: string | null
+          progress?: string
+          responsible_person?: string | null
+          root_cause?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       indicators: {
         Row: {
           actual_value: number | null
