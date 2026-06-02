@@ -49,39 +49,23 @@ export default function HospitalKPITracker() {
     }
   };
 
-  const handleUpdateActual = (month: string, kpiId: number, actualValue: number) => {
-    const kpi = kpis.find(k => k.id === kpiId);
+  const handleUpdateActual = async (record: KPIRecord) => {
+    const kpi = kpis.find((k) => k.id === record.kpiId);
     if (!kpi) return;
-
-    const { score, gap, status } = calculateKPIScore(kpi, actualValue);
-
-    setRecords(prev => {
-      const existsIdx = prev.findIndex(r => r.month === month && r.kpiId === kpiId);
-      if (existsIdx > -1) {
-        const updated = [...prev];
-        updated[existsIdx] = {
-          ...updated[existsIdx],
-          actualValue,
-          calculatedScore: score,
-          gap,
-          status
-        };
-        localStorage.setItem("hospital_kpi_records", JSON.stringify(updated));
-        return updated;
-      } else {
-        const newRecord: KPIRecord = {
-          id: `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          kpiId,
-          month,
-          actualValue,
-          calculatedScore: score,
-          gap,
-          status
-        };
-        const next = [...prev, newRecord];
-        localStorage.setItem("hospital_kpi_records", JSON.stringify(next));
-        return next;
-      }
+    const { score, gap, status } = calculateKPIScore(kpi, record.actualValue);
+    const updated: KPIRecord = {
+      ...record,
+      calculatedScore: score,
+      gap,
+      status,
+    };
+    setRecords((prev) => {
+      const next = [...prev];
+      const idx = next.findIndex((r) => r.kpiId === updated.kpiId && updated.month && r.month === updated.month);
+      if (idx > -1) next[idx] = updated;
+      else next.unshift(updated);
+      localStorage.setItem("hospital_kpi_records", JSON.stringify(next));
+      return next;
     });
   };
 

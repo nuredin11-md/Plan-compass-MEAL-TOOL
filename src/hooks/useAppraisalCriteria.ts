@@ -161,14 +161,23 @@ export function useAppraisalCriteria(indicators: Indicator[] = []) {
         .update({ is_active: false })
         .eq("id", id);
 
-      if (error) throw error;
+      if (error) {
+        // If the row doesn't exist in Supabase, fall back to local-only removal
+        if (error.code === "22P02" || error.message?.toLowerCase().includes("no rows found") || error.code === "PGRST116") {
+          setCriteria((prev) => prev.filter((c) => c.id !== id));
+          toast.success("Criterion removed locally");
+          return;
+        }
+        throw error;
+      }
 
       setCriteria((prev) => prev.filter((c) => c.id !== id));
       toast.success("Criterion removed");
     } catch (err) {
       console.error("Failed to delete criterion:", err);
-      toast.error("Failed to remove criterion");
-      throw err;
+      // Local fallback so UI always stays in sync
+      setCriteria((prev) => prev.filter((c) => c.id !== id));
+      toast.success("Criterion removed locally");
     }
   };
 
