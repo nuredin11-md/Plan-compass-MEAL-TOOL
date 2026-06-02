@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -9,6 +9,7 @@ import { useAssessmentData } from '../../hooks/useAssessmentData';
 import { gregorianToEthiopian } from '../../lib/ethiopianDate';
 import SectionContainer from './SectionContainer';
 import { CheckCircle2, ChevronRight, ChevronLeft, Save, AlertCircle, FileText, Settings, RefreshCw, BarChart2, Calendar } from 'lucide-react';
+import { toast } from 'sonner';
 
 const facilitySchema = z.object({
   name: z.string().min(3, "Facility Name must be at least 3 characters"),
@@ -26,7 +27,7 @@ const assessmentSchema = z.object({
   responses: z.record(
     z.string(),
     z.object({
-      score_achieved: z.number().int().min(0),
+      score_achieved: z.number().min(0),
       remarks: z.string().optional()
     })
   )
@@ -41,11 +42,11 @@ interface AssessmentWizardProps {
   onOpenConfig?: () => void;
 }
 
-export default function AssessmentWizard({ 
-  onSave, 
-  isSubmitting, 
-  isLiveConnected, 
-  onOpenConfig 
+export default function AssessmentWizard({
+  onSave,
+  isSubmitting,
+  isLiveConnected,
+  onOpenConfig
 }: AssessmentWizardProps) {
   const indicatorsContext = useIndicators() as any;
   const activeFacility = indicatorsContext?.facility || {
@@ -59,8 +60,8 @@ export default function AssessmentWizard({
   const { submitAssessment, isSubmitting: isLocalSubmitting } = useAssessmentData();
   const activeIsSubmitting = isSubmitting ?? isLocalSubmitting;
 
-  const hasSupabase = typeof window !== "undefined" && 
-    !!(import.meta.env.VITE_SUPABASE_URL || "").trim() && 
+  const hasSupabase = typeof window !== "undefined" &&
+    !!(import.meta.env.VITE_SUPABASE_URL || "").trim() &&
     !!(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "").trim();
   const liveConnected = isLiveConnected ?? hasSupabase;
 
@@ -93,8 +94,6 @@ export default function AssessmentWizard({
       ethiopianDateStr: "",
       responses: DEFAULT_ASSESSMENT_ITEMS.reduce((api, item) => {
         api[item.id] = {
-          // Initialize select items as undefined or empty so they must make an explicit choice,
-          // except B (percentage) which can default to 80 or 0
           score_achieved: item.max_score === 100 ? 80 : undefined as any,
           remarks: ""
         };
@@ -104,7 +103,6 @@ export default function AssessmentWizard({
   });
 
   const { register, watch, setValue, trigger, handleSubmit, formState: { errors } } = methods;
-
   const formValues = watch();
 
   // Keep demographic details synchronized with the global app profile
@@ -129,7 +127,7 @@ export default function AssessmentWizard({
   }, [selectedDate, setValue]);
 
   // Score calculations live preview
-const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Section A"));
+  const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Section A"));
   const itemsB = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Section B"));
   const itemsC = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Section C"));
 
@@ -156,7 +154,7 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
 
   const handleBack = () => {
     setSubmitError(null);
-    setCurrentStep((p) => Math.max(0, p - 1));
+    setCurrentStep((prev: number) => Math.max(0, prev - 1));
   };
 
   const handleSaveChecklist = async () => {
@@ -197,52 +195,6 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
     }
   };
 
-    const isStepValid = await trigger(fieldsToValidate as any);
-    if (isStepValid) {
-      setSubmitError(null);
-      setCurrentStep(prev => prev + 1);
-    } else {
-      setSubmitError("Please make sure all questions are answered, and provide required remarks for any scores under 50% before advancing.");
-    }
-  };
-
-  const handleBack = () => {
-    setSubmitError(null);
-    setCurrentStep(prev => prev - 1);
-  };
-
-  const handleSaveChecklist = async () => {
-    setSubmitError(null);
-    const isValid = await trigger();
-    if (!isValid) {
-      setSubmitError('Please complete the required fields before submitting.');
-      return;
-    }
-    const data = methods.getValues();
-    try {
-      const res = await submitAssessment(
-        { ...data.facility, assessment_date: data.assessment_date, quarter: data.quarter },
-        Object.entries(data.responses).map(([item_id, r]: any) => ({
-          item_id,
-          score_achieved: Number(r?.score_achieved) || 0,
-          remarks: r?.remarks || '',
-        })),
-        scoreSummary.overallPercentage
-      );
-      if (res?.success) {
-        toast.success('HIS Assessment checklist saved successfully');
-      } else {
-        toast.error(res?.error || 'Assessment not saved. Check required fields.');
-      }
-    } catch (e: any) {
-      toast.error(e?.message || 'Unexpected error while saving assessment');
-    }
-  };
-    } catch (err: any) {
-      setSubmitError(err.message || "An exception occurred during transaction operations.");
-    }
-  };
-
   const resetWizardState = () => {
     methods.reset();
     setCurrentStep(0);
@@ -263,8 +215,8 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
                   AUDIT CONTROLLER v1.0
                 </span>
                 <span className={`text-[10px] font-bold uppercase tracking-wider rounded-md px-2 py-0.5 ${
-                  liveConnected 
-                    ? 'bg-emerald-400 text-emerald-950' 
+                  liveConnected
+                    ? 'bg-emerald-400 text-emerald-950'
                     : 'bg-amber-400/20 text-amber-300 border border-amber-400/20'
                 }`}>
                   {liveConnected ? "● LIVE SUPABASE" : "⚡ SIMULATED MODE"}
@@ -300,8 +252,7 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
                   key={idx}
                   id={`stepper-btn-${idx}`}
                   type="button"
-                  onClick={async () => {
-                    // Navigate backwards freely
+                  onClick={() => {
                     if (idx < currentStep) {
                       setCurrentStep(idx);
                     }
@@ -309,7 +260,7 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
                   className="flex flex-col text-left group focus:outline-none flex-1 min-w-[70px]"
                 >
                   <div className="w-full bg-white/20 h-1 relative rounded overflow-hidden">
-                    <div 
+                    <div
                       className={`absolute left-0 top-0 h-full transition-all duration-300 ${
                         idx <= currentStep ? 'bg-emerald-400' : 'bg-transparent'
                       }`}
@@ -329,7 +280,7 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
 
         {/* Wizard Main Content Panel */}
         <div className="p-6 flex-1 overflow-y-auto max-h-[650px] bg-gray-50/50">
-          
+
           {submitError && (
             <div id="submit-error-banner" className="bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl p-4 mb-6 flex items-start gap-2.5 shadow-sm">
               <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
@@ -339,12 +290,11 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
             </div>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            
+          <form onSubmit={handleSubmit(onSubmit as any)} className="space-y-6">
+
             {/* STEP 0: Section A Checklist + Date Selector */}
             {currentStep === 0 && (
               <div className="space-y-6">
-                {/* Embedded Date selection and demographic preview */}
                 <div className="bg-gradient-to-br from-slate-50 to-indigo-50/30 border border-indigo-100 rounded-2xl p-5 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5 font-sans">
@@ -380,7 +330,7 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
                   </div>
                 </div>
 
-                <SectionContainer 
+                <SectionContainer
                   sectionName="Section A: HIS Structure & Governance"
                   items={itemsA}
                   register={register}
@@ -393,7 +343,7 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
 
             {/* STEP 1: Section B Checklist */}
             {currentStep === 1 && (
-              <SectionContainer 
+              <SectionContainer
                 sectionName="Section B: Data Quality & Management"
                 items={itemsB}
                 register={register}
@@ -405,7 +355,7 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
 
             {/* STEP 2: Section C Checklist */}
             {currentStep === 2 && (
-              <SectionContainer 
+              <SectionContainer
                 sectionName="Section C: Information Use for Decision"
                 items={itemsC}
                 register={register}
@@ -423,7 +373,6 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
                   <p className="text-xs text-gray-500">Ensure all facility metadata and scores are correct before executing the transaction to Supabase storage.</p>
                 </div>
 
-                {/* Grid metadata review card */}
                 <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Facility Demographic Profile</h3>
@@ -456,10 +405,9 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
                   </div>
                 </div>
 
-                {/* Section performance percentages breakdown bars */}
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Weighted Performance Sections</h3>
-                  
+
                   <div className="space-y-4 pt-1">
                     {scoreSummary.sectionBreakdown.map((sec, i) => (
                       <div key={i} className="space-y-1.5">
@@ -470,7 +418,7 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
                           </span>
                         </div>
                         <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden flex">
-                          <div 
+                          <div
                             className={`h-2.5 transition-all duration-300 ${
                               sec.performancePercentage >= 80 ? 'bg-emerald-500' : sec.performancePercentage >= 50 ? 'bg-indigo-500' : 'bg-red-500'
                             }`}
@@ -497,12 +445,11 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
                   </div>
                 </div>
 
-                {/* Submit disclaimer & Warnings */}
                 <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-start gap-2.5">
                   <AlertCircle className="w-4 h-4 text-indigo-700 flex-shrink-0 mt-0.5" />
                   <p className="text-[11px] text-indigo-900 leading-relaxed">
-                    By clicking submit, you initiate a relational schema insert transaction inside your storage layer. 
-                    This will upsert standard facility information, generate an audit container header, and append response tracking rows atomically. 
+                    By clicking submit, you initiate a relational schema insert transaction inside your storage layer.
+                    This will upsert standard facility information, generate an audit container header, and append response tracking rows atomically.
                   </p>
                 </div>
               </div>
@@ -514,7 +461,7 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
                 <div className="w-16 h-16 bg-emerald-50 border border-emerald-100 rounded-full flex items-center justify-center text-emerald-600 shadow-inner">
                   <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
                 </div>
-                
+
                 <div className="space-y-2">
                   <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold rounded-full px-3 py-1 uppercase tracking-wide">
                     Success! Transaction Committed
@@ -523,7 +470,7 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
                     Assessment Data Saved Successfully
                   </h2>
                   <p className="text-xs text-gray-500 max-w-md mx-auto">
-                    The facility profile, dates, and calculated section score ratios were successfully committed. 
+                    The facility profile, dates, and calculated section score ratios were successfully committed.
                     Review log outputs below to inspect transaction database steps.
                   </p>
                 </div>
@@ -583,7 +530,8 @@ const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Sec
                 ) : (
                   <button
                     id="wizard-submit-btn"
-                    type="submit"
+                    type="button"
+                    onClick={handleSaveChecklist}
                     disabled={activeIsSubmitting}
                     className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold rounded-lg px-6 py-2.5 transition flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/15 disabled:opacity-50"
                   >
