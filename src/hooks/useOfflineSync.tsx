@@ -11,7 +11,6 @@ import {
   setupOnlineAvailabilityListeners,
   updateSyncQueueItem,
   isOfflineMode,
-  saveToLocalStorage,
   getFromLocalStorage,
 } from "@/lib/offlineStorage";
 import type { MonthlyData } from "@/hooks/useDatabase";
@@ -219,16 +218,14 @@ export function useOfflineSync(): UseOfflineSyncReturn {
     }
   }, [isOnline, isDatabaseAvailable, processSyncQueue]);
 
-  // Restore sync status from localStorage
+  // Restore sync status from localStorage (read once on mount, do NOT re-write on every change)
   useEffect(() => {
     const savedStatus = getFromLocalStorage<{ isOnline: boolean }>(SYNC_INDICATOR_KEY);
-    if (savedStatus) {
+    if (savedStatus && typeof savedStatus.isOnline === "boolean") {
       setIsOnline(savedStatus.isOnline);
     }
-
-    // Save current sync status
-    saveToLocalStorage(SYNC_INDICATOR_KEY, { isOnline });
-  }, [isOnline]);
+    // Intentionally no saveToLocalStorage here — the event listeners own the live state.
+  }, []);
 
   return {
     isOnline,
