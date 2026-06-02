@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Indicator, setIndicatorsFromDB } from '@/data/hospitalIndicators';
 import { fetchIndicatorsFromDB } from '../../hospitalDataSync';
+import { supabase } from '@/integrations/supabase/client';
 
 interface IndicatorsContextType {
   indicators: Indicator[];
@@ -19,29 +20,51 @@ export const useIndicators = () => {
 };
 
 export const IndicatorsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [indicators, setIndicators] = useState<Indicator[]>([]); // መጀመሪያ ባዶ ይሁን
+  const [indicators, setIndicators] = useState<Indicator[]>([]);
+  const [ready, setReady] = useState(false);
 
-  // 1. ዳታውን ከሱፓቤዝ የሚያመጣው useEffect
   useEffect(() => {
+    let cancelled = false;
+
     const loadIndicators = async () => {
+      // Ensure Supabase auth session is ready before querying (RLS requires auth)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        // No session yet; wait briefly for auth to initialize, then retry once
+        await new Promise((r) => setTimeout(r, 800));
+      }
+
       try {
         const inds = await fetchIndicatorsFromDB();
+        if (cancelled) return;
         setIndicatorsFromDB(inds);
         setIndicators(inds);
       } catch (error) {
+        if (cancelled) return;
         console.error('Failed to load indicators from Supabase:', error);
+      } finally {
+        if (!cancelled) setReady(true);
       }
     };
 
     loadIndicators();
+
+    // Re-load when auth state changes (login / logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      if (!cancelled && ready) {
+        loadIndicators();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  // 2. ሌሎች ተግባራት (add/update/remove)
-  // እዚህ ጋር ወደ ሱፓቤዝም የመላክ (upsert) ሎጂክ ማከል አለብን
   const addIndicator = (indicator: Indicator): boolean => {
     if (indicators.some(ind => ind.code === indicator.code)) return false;
     setIndicators(prev => [...prev, indicator]);
-    // እዚህ ጋር supabase.from('...').insert(...) ይጨመራል
     return true;
   };
 
@@ -53,7 +76,7 @@ export const IndicatorsProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setIndicators(prev => prev.filter(ind => ind.code !== code));
   };
 
-  const isCustom = (code: string): boolean => true; // እንደ አስፈላጊነቱ አስተካክለው
+  const isCustom = (code: string): boolean => true;
 
   return (
     <IndicatorsContext.Provider value={{ indicators, addIndicator, updateIndicator, removeIndicator, isCustom }}>

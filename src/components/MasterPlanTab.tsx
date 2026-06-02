@@ -99,6 +99,37 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
 
   const sourceIndicators = indicators;
 
+  const derivedIndicators = useMemo(() => {
+    if (sourceIndicators.length > 0) return sourceIndicators;
+    if (dbPerformanceRows.length === 0) return [] as Indicator[];
+    // Fallback: derive indicators directly from DB rows so the table is never blank
+    const byName = new Map<string, Indicator>();
+    for (const row of dbPerformanceRows) {
+      const name = String(row.indicator_name || "");
+      if (!name) continue;
+      if (!byName.has(name)) {
+        const code =
+          name
+            .toUpperCase()
+            .replace(/[^A-Z0-9]+/g, "_")
+            .replace(/^_+|_+$/g, "")
+            .slice(0, 100) || name;
+        byName.set(name, {
+          code,
+          programArea: String(row.category || "General"),
+          subProgram: String(row.category || "General"),
+          indicator: name,
+          unit: "#",
+          baseline: 0,
+          target: 0,
+        });
+      }
+    }
+    return Array.from(byName.values()).sort((a, b) =>
+      a.programArea.localeCompare(b.programArea) || a.indicator.localeCompare(b.indicator)
+    );
+  }, [sourceIndicators, dbPerformanceRows]);
+
   const uniqueProgramAreas = useMemo(
     () => Array.from(new Set(sourceIndicators.map((i) => i.programArea))).sort(),
     [sourceIndicators]
@@ -117,7 +148,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
   );
 
   const rows = useMemo(() => {
-    let list = sourceIndicators.map((ind) => {
+    let list = derivedIndicators.map((ind) => {
       // Find dynamic matching row inside dbPerformanceRows
       const matchRow = (row: any) => {
         const slugified = row.indicator_name

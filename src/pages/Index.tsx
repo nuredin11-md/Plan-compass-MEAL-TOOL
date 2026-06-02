@@ -18,6 +18,7 @@ import AboutUsTab from "@/components/AboutUsTab";
 import WorkspaceTab from "@/components/WorkspaceTab";
 import HospitalKPITracker from "@/components/HospitalKPITracker/HospitalKPITrackerApp";
 import FacilityAssessmentContainer from "@/components/assessment/FacilityAssessmentContainer";
+import GrandTotalTab from "@/components/GrandTotalTab";
 import { BackupManager } from "@/lib/backupUtils";
 import { AuditLogger } from "@/lib/securityUtils";
 import { mergeMonthlyData, convertMonthlyDataToEntries } from "@/lib/databaseSync";
@@ -248,6 +249,17 @@ const Index = () => {
         );
       case "hospital-tracker":
         return <HospitalKPITracker />;
+      case "grand-total":
+        return (
+          <GrandTotalTab
+            monthlyData={monthlyData}
+            selectedYear={selectedYear}
+            previousYearData={yearlyData[getPreviousEFY(selectedEFY)] || []}
+            setMonthlyData={setMonthlyData}
+            selectedEFY={selectedEFY}
+            onEFYChange={handleEFYChange}
+          />
+        );
       case "assessment-tool":
         return <FacilityAssessmentContainer />;
       case "meeting-hub":

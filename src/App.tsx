@@ -32,13 +32,15 @@ function AuthRoute() {
   return <Auth />;
 }
 
+const basename = import.meta.env.PROD ? "/Plan-compass-MEAL-TOOL/" : "/";
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      {/* ነጭ ስክሪኑን እና 404 ስህተቱን የሚያስተካክለው ወሳኝ መስመር እዚህ አለ */}
-      <BrowserRouter basename="/">
+      
+      <BrowserRouter basename={basename}>
         <AuthProvider>
           <IndicatorsProvider>
             <Routes>
