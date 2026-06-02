@@ -15,7 +15,9 @@ import {
   LayoutDashboard,
   Save,
   Activity,
-  UserCheck
+  UserCheck,
+  CloudOff,
+  Cloud
 } from "lucide-react";
 import HospitalInfoForm from "./HospitalInfoForm";
 import AssessmentSection from "./AssessmentSection";
@@ -29,6 +31,7 @@ import {
   type HospitalInfo,
   criteriaLookup
 } from "./ipcData";
+import { useIPCAssessment } from "@/hooks/useIPCAssessment";
 
 const STEPS = [
   { id: "profile", label: "Hospital Profile", component: "profile", desc: "Coordinates & administrative capacities" },
@@ -40,8 +43,25 @@ const STEPS = [
 const LOCAL_STORAGE_KEY_DATA = "ipc_flat_assessment_responses_v1";
 const LOCAL_STORAGE_KEY_INFO = "ipc_flat_assessment_hospital_v1";
 
+function calculateTotalScore(data: AssessmentData): number {
+  return Object.values(data).reduce((sum, entry) => {
+    if (!entry) return sum;
+    const numeric =
+      entry.answer === "yes"
+        ? 1
+        : entry.answer === "no"
+          ? 0
+          : entry.answer === "na"
+            ? 0
+            : 0;
+    return sum + numeric;
+  }, 0);
+}
+
 export default function IPCFlatScoreTool() {
   const [currentStepIdx, setCurrentStepIdx] = useState(0);
+  const { saveIPCAssessment, fetchUserAssessments } = useIPCAssessment();
+  const [saveStatus, setSaveStatus] = useState<{ mode: "idle" | "saving" | "saved" | "error"; message?: string }>({ mode: "idle" });
 
   // Initialize responsive state variables
   const [assessmentData, setAssessmentData] = useState<AssessmentData>(() => {
@@ -68,7 +88,7 @@ export default function IPCFlatScoreTool() {
     return getInitialHospitalInfo();
   });
 
-  // Automatically save state progress incrementally
+  // Automatically save state progress incrementally (local autorescue)
   useEffect(() => {
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY_DATA, JSON.stringify(assessmentData));
@@ -84,6 +104,55 @@ export default function IPCFlatScoreTool() {
       console.error("Autorescue write failed for demographics", e);
     }
   }, [hospitalInfo]);
+
+  const handleSaveDraft = async () => {
+    setSaveStatus({ mode: "saving" });
+    try {
+      const totalScore = calculateTotalScore(assessmentData);
+      const scorePercentage = Math.round((totalScore / 205) * 100);
+
+      const result = await saveIPCAssessment(
+        hospitalInfo,
+        assessmentData,
+        totalScore,
+        scorePercentage,
+        "draft"
+      );
+
+      if (result.success) {
+        setSaveStatus({ mode: "saved", message: "Draft saved to cloud" });
+      } else {
+        setSaveStatus({ mode: "error", message: result.error || "Save failed" });
+      }
+    } catch (err: any) {
+      setSaveStatus({ mode: "error", message: err.message });
+    }
+  };
+
+  const handleSubmitFinal = async () => {
+    setSaveStatus({ mode: "saving" });
+    try {
+      const totalScore = calculateTotalScore(assessmentData);
+      const scorePercentage = Math.round((totalScore / 205) * 100);
+
+      const result = await saveIPCAssessment(
+        hospitalInfo,
+        assessmentData,
+        totalScore,
+        scorePercentage,
+        "submitted"
+      );
+
+      if (result.success) {
+        setSaveStatus({ mode: "saved", message: "Assessment submitted successfully" });
+        toast.success("IPC FLAT Assessment committed to Supabase");
+      } else {
+        setSaveStatus({ mode: "error", message: result.error || "Submission failed" });
+      }
+    } catch (err: any) {
+      setSaveStatus({ mode: "error", message: err.message });
+    }
+  };
 
   const handleReset = () => {
     if (window.confirm("Are you absolutely sure you want to clear this entire assessment? This will permanently wipe all 200+ answers and hospital profiles. This action is irreversible.")) {
@@ -161,6 +230,24 @@ export default function IPCFlatScoreTool() {
             title="Reset active assessment questions completely"
           >
             <RotateCcw className="h-3.5 w-3.5" /> Reset Audit
+          </Button>
+          
+          <Button 
+            type="button"
+            variant="ghost"
+            onClick={handleSaveDraft}
+            disabled={saveStatus.mode === "saving"}
+            className="h-9 px-3 text-xs font-bold gap-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg cursor-pointer transition-colors"
+            title="Save draft to cloud"
+          >
+            {saveStatus.mode === "saving" ? (
+              <Cloud className="h-3.5 w-3.5 animate-pulse" />
+            ) : saveStatus.mode === "saved" ? (
+              <Cloud className="h-3.5 w-3.5 text-emerald-400" />
+            ) : (
+              <CloudOff className="h-3.5 w-3.5 text-slate-500" />
+            )}
+            {saveStatus.mode === "saving" ? "Saving..." : saveStatus.mode === "saved" ? "Saved" : "Save Draft"}
           </Button>
         </div>
       </div>
@@ -262,19 +349,41 @@ export default function IPCFlatScoreTool() {
           <ArrowLeft className="h-4 w-4" /> Previous Step
         </Button>
 
-        {currentStepIdx < STEPS.length - 1 ? (
-          <Button
-            type="button"
-            onClick={handleNext}
-            className="h-10 px-5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-xs rounded-xl font-bold text-xs gap-1.5 cursor-pointer transition-all hover:translate-y-[-1px]"
-          >
-            Proceed to {STEPS[currentStepIdx + 1].label} <ArrowRight className="h-4 w-4" />
-          </Button>
-        ) : (
-          <div className="text-right text-xs font-bold text-emerald-600 flex items-center gap-1.5 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100">
-            <UserCheck className="h-4 w-4" /> Complete assessment registered offline perfectly!
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {saveStatus.message && (
+            <span className={`text-[11px] font-semibold ${
+              saveStatus.mode === "saved" ? "text-emerald-600" : 
+              saveStatus.mode === "error" ? "text-red-600" : 
+              "text-slate-500"
+            }`}>
+              {saveStatus.message}
+            </span>
+          )}
+
+          {currentStepIdx < STEPS.length - 1 ? (
+            <Button
+              type="button"
+              onClick={handleNext}
+              className="h-10 px-5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-xs rounded-xl font-bold text-xs gap-1.5 cursor-pointer transition-all hover:translate-y-[-1px]"
+            >
+              Proceed to {STEPS[currentStepIdx + 1].label} <ArrowRight className="h-4 w-4" />
+            </Button>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                onClick={handleSubmitFinal}
+                disabled={saveStatus.mode === "saving"}
+                className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-xs rounded-xl font-bold text-xs gap-1.5 cursor-pointer transition-all hover:translate-y-[-1px] disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" /> Submit Final Assessment
+              </Button>
+              <span className="text-xs font-bold text-emerald-600 flex items-center gap-1.5 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100">
+                <UserCheck className="h-4 w-4" /> Assessment complete
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
     </div>

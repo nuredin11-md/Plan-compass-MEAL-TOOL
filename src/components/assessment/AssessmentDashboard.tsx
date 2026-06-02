@@ -166,48 +166,70 @@ export default function AssessmentDashboard() {
 
   // Combined metrics mapper
   const combinedRecords = useMemo(() => {
-    // Start with default trends
-    const list = [...DEFAULT_TREND_RECORDS];
+    // Start with history from Supabase (real data) when available
+    const historyRecords = (assessmentHistory || []).map((row: any, idx: number) => {
+      const facility = row.facilities || {};
+      const section = facility.name ? `Facility: ${facility.name}` : "Facility Audit";
+      const category = row.quarter ? `Assessment ${row.quarter}` : "Assessment Session";
+      return {
+        id: row.id || `hist_${idx}`,
+        year: String(new Date(row.assessment_date || Date.now()).getFullYear()),
+        quarter: row.quarter || "Q?",
+        section,
+        category,
+        value: typeof row.total_score === "number" ? row.total_score : 0,
+        target: globalTarget,
+      };
+    });
+
+    const liveList = [...DEFAULT_TREND_RECORDS];
 
     // Merge in any manual overrides or additions
-    overrides.forEach(ov => {
-      const matchIndex = list.findIndex(
-        item => item.year === ov.year && 
-                item.quarter === ov.quarter && 
-                item.section === ov.section && 
-                item.category === ov.category
+    overrides.forEach((ov: any) => {
+      const matchIndex = liveList.findIndex(
+        (item) =>
+          item.year === ov.year &&
+          item.quarter === ov.quarter &&
+          item.section === ov.section &&
+          item.category === ov.category
       );
       if (matchIndex > -1) {
-        // Apply override value
-        list[matchIndex] = { 
-          ...list[matchIndex],
-          value: ov.value !== undefined ? ov.value : list[matchIndex].value,
-          target: ov.target !== undefined ? ov.target : list[matchIndex].target
+        liveList[matchIndex] = {
+          ...liveList[matchIndex],
+          value: ov.value !== undefined ? ov.value : liveList[matchIndex].value,
+          target: ov.target !== undefined ? ov.target : liveList[matchIndex].target,
         };
       } else {
-        // Append new custom record
-        list.push({
+        liveList.push({
           id: `ov_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
           year: ov.year,
           quarter: ov.quarter,
           section: ov.section,
           category: ov.category,
           value: ov.value,
-          target: ov.target || globalTarget
+          target: ov.target || globalTarget,
         });
       }
     });
 
+    const merged = [...historyRecords, ...liveList];
+
     // If there is an active Live IPC score entered in step 2/3, integrate as "2026 Live" values
     if (activeIPCScore !== null) {
-      const matchIPC = list.findIndex(item => item.year === "2026" && item.quarter === "Q2" && item.section === "IPC Practices" && item.category === "Domain Score compliance");
+      const matchIPC = merged.findIndex(
+        (item: any) =>
+          item.year === "2026" &&
+          item.quarter === "Q2" &&
+          item.section === "IPC Practices" &&
+          item.category === "Domain Score compliance"
+      );
       if (matchIPC > -1) {
-        list[matchIPC].value = activeIPCScore;
+        merged[matchIPC].value = activeIPCScore;
       }
     }
 
-    return list;
-  }, [overrides, activeIPCScore, globalTarget]);
+    return merged;
+  }, [overrides, activeIPCScore, globalTarget, assessmentHistory]);
 
   // Create list of unique categories based on selected section filter for UI selectivity
   const categoriesList = useMemo(() => {

@@ -230,8 +230,187 @@ export type Database = {
         }
         Relationships: []
       }
-      profiles: {
+      assessment_items: {
         Row: {
+          created_at: string | null
+          guide_notes: string | null
+          id: string
+          item_description: string
+          max_score: number
+          section_name: string
+          sort_order: number
+          weighting: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          guide_notes?: string | null
+          id?: string
+          item_description: string
+          max_score: number
+          section_name: string
+          sort_order?: number
+          weighting?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          guide_notes?: string | null
+          id?: string
+          item_description?: string
+          max_score?: number
+          section_name?: string
+          sort_order?: number
+          weighting?: number | null
+        }
+        Relationships: []
+      }
+      facilities: {
+        Row: {
+          code: string
+          created_at: string | null
+          id: string
+          name: string
+          region: string | null
+          updated_at: string | null
+          woreda: string | null
+          zone: string | null
+        }
+        Insert: {
+          code?: string
+          created_at?: string | null
+          id?: string
+          name: string
+          region?: string | null
+          updated_at?: string | null
+          woreda?: string | null
+          zone?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          id?: string
+          name?: string
+          region?: string | null
+          updated_at?: string | null
+          woreda?: string | null
+          zone?: string | null
+        }
+        Relationships: []
+      }
+      assessments: {
+        Row: {
+          assessment_date: string
+          created_at: string | null
+          created_by: string | null
+          facility_id: string
+          id: string
+          quarter: string
+          total_score: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          assessment_date: string
+          created_at?: string | null
+          created_by?: string | null
+          facility_id: string
+          id?: string
+          quarter: string
+          total_score?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          assessment_date?: string
+          created_at?: string | null
+          created_by?: string | null
+          facility_id?: string
+          id?: string
+          quarter?: string
+          total_score?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      responses: {
+        Row: {
+          assessment_id: string
+          created_at: string | null
+          id: string
+          item_id: string
+          remarks: string | null
+          score_achieved: number
+        }
+        Insert: {
+          assessment_id: string
+          created_at?: string | null
+          id?: string
+          item_id: string
+          remarks?: string | null
+          score_achieved: number
+        }
+        Update: {
+          assessment_id?: string
+          created_at?: string | null
+          id?: string
+          item_id?: string
+          remarks?: string | null
+          score_achieved?: number
+        }
+        Relationships: []
+      }
+      ipc_assessments: {
+        Row: {
+          assessment_date: string
+          assessor_names: string | null
+          created_at: string | null
+          created_by: string | null
+          hospital_location: string | null
+          hospital_name: string
+          hospital_profile: Json | null
+          id: string
+          responses: Json | null
+          score_percentage: number | null
+          section_i_score: number | null
+          section_ii_score: number | null
+          status: string | null
+          total_score: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          assessment_date: string
+          assessor_names?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          hospital_location?: string | null
+          hospital_name: string
+          hospital_profile?: Json | null
+          id?: string
+          responses?: Json | null
+          score_percentage?: number | null
+          section_i_score?: number | null
+          section_ii_score?: number | null
+          status?: string | null
+          total_score?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          assessment_date?: string
+          assessor_names?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          hospital_location?: string | null
+          hospital_name?: string
+          hospital_profile?: Json | null
+          id?: string
+          responses?: Json | null
+          score_percentage?: number | null
+          section_i_score?: number | null
+          section_ii_score?: number | null
+          status?: string | null
+          total_score?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
           created_at: string
           department: Database["public"]["Enums"]["department"]
           display_name: string

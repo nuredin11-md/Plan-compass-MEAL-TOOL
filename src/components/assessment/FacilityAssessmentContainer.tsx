@@ -1,75 +1,169 @@
-import React, { useState } from "react";
-import { ClipboardList, Shield, TrendingUp } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import AssessmentWizard from "@/components/assessment/AssessmentWizard";
 import IPCFlatScoreTool from "@/components/ipc/IPCFlatScoreTool";
 import AssessmentDashboard from "@/components/assessment/AssessmentDashboard";
+import { useAssessmentData } from "@/hooks/useAssessmentData";
+import { supabase } from "@/integrations/supabase/client";
+import { ClipboardList, Shield, TrendingUp, LayoutGrid, Loader2 } from "lucide-react";
+
+type TabId = "dashboard" | "hospital-data" | "ipc-flat";
+
+interface TabOption {
+  id: TabId;
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+  color: string;
+}
+
+const tabs: TabOption[] = [
+  {
+    id: "dashboard",
+    label: "Trend & Performance Dashboard",
+    description: "Analytics, filters, and trend charts",
+    icon: <TrendingUp className="h-4 w-4" />,
+    color: "text-indigo-500",
+  },
+  {
+    id: "hospital-data",
+    label: "Hospital Data Checklist",
+    description: "HIS audit checklist wizard",
+    icon: <ClipboardList className="h-4 w-4" />,
+    color: "text-slate-400",
+  },
+  {
+    id: "ipc-flat",
+    label: "IPC FLAT Assessment",
+    description: "Infection prevention clinical audit",
+    icon: <Shield className="h-4 w-4" />,
+    color: "text-emerald-500",
+  },
+];
 
 export default function FacilityAssessmentContainer() {
-  const [activeSubTab, setActiveSubTab] = useState<"hospital-data" | "ipc-flat" | "trend-dashboard">("trend-dashboard");
+  const [activeTab, setActiveTab] = useState<TabId>("dashboard");
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [assessmentHistory, setAssessmentHistory] = useState<any[]>([]);
+  const { submitAssessment } = useAssessmentData();
+
+  const activeOption = tabs.find((t) => t.id === activeTab)!;
+
+  // Fetch past assessment sessions from Supabase (for future history view)
+  const loadHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const { data, error } = await supabase
+        .from("assessments")
+        .select("id, assessment_date, quarter, total_score, facility_id, facilities(code, name)")
+        .order("assessment_date", { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setAssessmentHistory(data || []);
+    } catch (err) {
+      console.error("Failed to load assessment history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  const handleSaveChecklist = useCallback(
+    async (data: any) => {
+      const result = await submitAssessment(
+        data.profile,
+        data.responses,
+        data.totalScore
+      );
+      if (result.success) {
+        await loadHistory();
+      }
+      return result;
+    },
+    [submitAssessment, loadHistory]
+  );
 
   return (
-    <div className="space-y-6 flex flex-col h-full w-full">
-      {/* Unified sub-tab top selection bar with sidebar controller */}
-      <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 bg-slate-900 text-white p-4 border border-slate-800 rounded-2xl shadow-lg">
+    <div className="space-y-4 flex flex-col h-full w-full">
+      {/* Modern header with sidebar + dropdown */}
+      <div className="flex items-center justify-between gap-3 bg-slate-900 text-white p-3 border border-slate-800 rounded-2xl shadow-lg">
         <div className="flex items-center gap-3">
           <SidebarTrigger className="text-white hover:bg-white/10 transition-colors rounded-lg shrink-0" />
-          <div className="h-8 w-px bg-slate-800 hidden md:block"></div>
           <div>
             <h2 className="text-sm font-extrabold tracking-tight text-white uppercase">Facility Assessment Workspace</h2>
-            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Toggle between audit checklists, clinical IPC tracking, and visual trend analytics</p>
+            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+              IPC audits, HIS checklists, and performance analytics
+            </p>
           </div>
         </div>
 
-        {/* Sub-tab togglers list */}
-        <div className="flex bg-slate-950/80 p-1 rounded-xl border border-slate-800 gap-1 w-full md:w-auto overflow-x-auto">
-          <button
-            type="button"
-            onClick={() => setActiveSubTab("trend-dashboard")}
-            className={`flex-1 md:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap ${
-              activeSubTab === "trend-dashboard"
-                ? "bg-indigo-600 text-white shadow-md ring-1 ring-white/10 font-extrabold"
-                : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-            }`}
-          >
-            <TrendingUp className="h-3.5 w-3.5" />
-            <span>Trend & Performance Dashboard</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSubTab("hospital-data")}
-            className={`flex-1 md:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap ${
-              activeSubTab === "hospital-data"
-                ? "bg-slate-850 border border-slate-700 text-white shadow-md font-extrabold"
-                : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-            }`}
-          >
-            <ClipboardList className="h-3.5 w-3.5" />
-            <span>Hospital Data Checklist</span>
-          </button>
-          
-          <button
-            type="button"
-            onClick={() => setActiveSubTab("ipc-flat")}
-            className={`flex-1 md:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap ${
-              activeSubTab === "ipc-flat"
-                ? "bg-emerald-600 text-white shadow-md ring-1 ring-white/10 font-extrabold"
-                : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-            }`}
-          >
-            <Shield className="h-3.5 w-3.5" />
-            <span>IPC FLAT Assessment</span>
-          </button>
-        </div>
+        {/* Dropdown tab selector */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              className="h-9 gap-2 border-slate-700 bg-slate-950/60 text-white hover:bg-slate-800 hover:text-white text-xs font-semibold"
+            >
+              <LayoutGrid className="h-3.5 w-3.5 text-indigo-400" />
+              {activeOption.label}
+              <span className="ml-1 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300">
+                {tabs.length}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            {tabs.map((tab) => (
+              <DropdownMenuItem
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-start gap-3 p-3 cursor-pointer ${
+                  activeTab === tab.id ? "bg-indigo-50/80" : ""
+                }`}
+              >
+                <div className={`mt-0.5 ${tab.color}`}>{tab.icon}</div>
+                <div className="space-y-0.5">
+                  <p className="text-xs font-semibold text-slate-800 leading-tight">
+                    {tab.label}
+                  </p>
+                  <p className="text-[10px] text-slate-500 leading-tight">
+                    {tab.description}
+                  </p>
+                </div>
+                {activeTab === tab.id && (
+                  <span className="ml-auto text-[10px] font-bold text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded">
+                    Active
+                  </span>
+                )}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      {/* Display Render View area */}
+      {/* Render selected tab */}
       <div className="flex-grow w-full select-none">
-        {activeSubTab === "trend-dashboard" ? (
-          <AssessmentDashboard />
-        ) : activeSubTab === "hospital-data" ? (
-          <AssessmentWizard />
+        {activeTab === "dashboard" ? (
+          <AssessmentDashboard
+            assessmentHistory={assessmentHistory}
+            loadingHistory={loadingHistory}
+            onRefresh={loadHistory}
+          />
+        ) : activeTab === "hospital-data" ? (
+          <AssessmentWizard
+            onSave={handleSaveChecklist}
+            isLiveConnected
+          />
         ) : (
           <IPCFlatScoreTool />
         )}
