@@ -51,11 +51,26 @@ export function useHospitalKpiTracker() {
         supabase.from("hospital_action_plans").select("*").order("created_at", { ascending: false }),
       ]);
 
-      if (kpiRes.error) throw kpiRes.error;
-      if (recRes.error) throw recRes.error;
-      if (planRes.error) throw planRes.error;
+      const dbError = kpiRes.error || recRes.error || planRes.error;
+      if (dbError) throw dbError;
 
-      setKpis(kpiRes.data || []);
+      if (kpiRes.data && kpiRes.data.length > 0) {
+        setKpis(
+          (kpiRes.data || []).map((row: any) => ({
+            id: Number(row.id),
+            name: String(row.name),
+            category: row.category ?? null,
+            target: Number(row.target),
+            weight: Number(row.weight),
+            type: String(row.type) as "prop" | "cat",
+            measure: row.measure ?? null,
+            rules: row.rules ?? null,
+          }))
+        );
+      } else {
+        const fallback = (await import("@/data")).INITIAL_KPIS;
+        setKpis(fallback);
+      }
       setRecords(
         (recRes.data || []).map((r: any) => ({
           id: r.id,

@@ -1,59 +1,146 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { 
   BarChart3, 
   ClipboardCheck, 
   FolderLock, 
+  ArrowLeft,
   Activity,
-  Award
+  Award,
+  Inbox
 } from "lucide-react";
-import { calculateKPIScore } from "@/data";
+import { 
+  INITIAL_KPIS, 
+  calculateKPIScore 
+} from "../../data";
+import { KPIDefinition, KPIRecord, ActionPlan } from "../../types";
+
 import DashboardPanel from "../DashboardPanel";
 import KPIRecordsPanel from "../KPIRecordsPanel";
 import ActionPlansPanel from "../ActionPlansPanel";
-import { useHospitalKpiTracker } from "@/hooks/useHospitalKpiTracker";
 
 export default function HospitalKPITracker() {
   const [activeTab, setActiveTab] = useState<string>("dashboard");
   const [selectedKpiId, setSelectedKpiId] = useState<number | null>(null);
 
-  const {
-    loading,
-    kpis,
-    records,
-    actionPlans,
-    reload,
-    saveRecord,
-    saveActionPlan,
-    deleteActionPlan,
-  } = useHospitalKpiTracker();
+  const [kpis, setKpis] = useState<KPIDefinition[]>([]);
+  const [records, setRecords] = useState<KPIRecord[]>([]);
+  const [actionPlans, setActionPlans] = useState<ActionPlan[]>([]);
 
+  useEffect(() => {
+    const saved = localStorage.getItem("hospital_kpi_records");
+    if (saved) {
+      try { setRecords(JSON.parse(saved)); } catch {}
+    }
+
+    const savedPlans = localStorage.getItem("hospital_action_plans");
+    if (savedPlans) {
+      try { setActionPlans(JSON.parse(savedPlans)); } catch {}
+    }
+  }, []);
+
+  // Handlers
   const handleNavigate = (tab: string, kpiId?: number) => {
     setActiveTab(tab);
-    setSelectedKpiId(kpiId ?? null);
+    if (kpiId !== undefined) {
+      setSelectedKpiId(kpiId);
+    } else {
+      setSelectedKpiId(null);
+    }
   };
 
-  const handleUpdateActual = async (month: string, kpiId: number, actualValue: number) => {
-    const kpi = kpis.find((k) => k.id === kpiId);
+  const handleUpdateActual = (month: string, kpiId: number, actualValue: number) => {
+    const kpi = kpis.find(k => k.id === kpiId);
     if (!kpi) return;
+
     const { score, gap, status } = calculateKPIScore(kpi, actualValue);
-    await saveRecord({
-      id: `rec_${Date.now()}_${Math.random().toString(36).replace(/[^a-z0-9]+/g, "").slice(2, 11)}`,
-      kpiId,
-      month,
-      actualValue,
-      calculatedScore: score,
-      gap,
-      status,
+
+    setRecords(prev => {
+      const existsIdx = prev.findIndex(r => r.month === month && r.kpiId === kpiId);
+      if (existsIdx > -1) {
+        const updated = [...prev];
+        updated[existsIdx] = {
+          ...updated[existsIdx],
+          actualValue,
+          calculatedScore: score,
+          gap,
+          status
+        };
+        localStorage.setItem("hospital_kpi_records", JSON.stringify(updated));
+        return updated;
+      } else {
+        const newRecord: KPIRecord = {
+          id: `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          kpiId,
+          month,
+          actualValue,
+          calculatedScore: score,
+          gap,
+          status
+        };
+        const next = [...prev, newRecord];
+        localStorage.setItem("hospital_kpi_records", JSON.stringify(next));
+        return next;
+      }
     });
   };
 
   const handleAddMonth = (month: string) => {
-    // handled by live DB records; no-op here to keep behavior from diverging
+    setRecords(prev => {
+      const exists = prev.some(r => r.month === month);
+      if (exists) return prev;
+
+      const newRecords: KPIRecord[] = kpis.map(kpi => {
+        const actual = 0;
+        const { score, gap, status } = calculateKPIScore(kpi, actual);
+        return {
+          id: `rec_${Date.now()}_${kpi.id}`,
+          kpiId: kpi.id,
+          month,
+          actualValue: actual,
+          calculatedScore: score,
+          gap,
+          status
+        };
+      });
+
+      const next = [...prev, ...newRecords];
+      localStorage.setItem("hospital_kpi_records", JSON.stringify(next));
+      return next;
+    });
   };
 
   const handleResetToDefaults = () => {
-    // live DB is now the source of truth; optional reset can rerun the seed migration
+    if (window.confirm("Are you sure you want to reset all data back to the default hospital figures? This deletes your changes.")) {
+      setRecords([]);
+      setActionPlans([]);
+      localStorage.removeItem("hospital_kpi_records");
+      localStorage.removeItem("hospital_action_plans");
+    }
+  };
+
+  const handleSaveActionPlan = (plan: ActionPlan) => {
+    setActionPlans(prev => {
+      const existsIdx = prev.findIndex(p => p.id === plan.id || (p.kpiId === plan.kpiId && p.month === plan.month));
+      if (existsIdx > -1) {
+        const updated = [...prev];
+        updated[existsIdx] = plan;
+        localStorage.setItem("hospital_action_plans", JSON.stringify(updated));
+        return updated;
+      } else {
+        const next = [...prev, plan];
+        localStorage.setItem("hospital_action_plans", JSON.stringify(next));
+        return next;
+      }
+    });
+  };
+
+  const handleDeleteActionPlan = (id: string) => {
+    setActionPlans(prev => {
+      const next = prev.filter(p => p.id !== id);
+      localStorage.setItem("hospital_action_plans", JSON.stringify(next));
+      return next;
+    });
   };
 
   return (

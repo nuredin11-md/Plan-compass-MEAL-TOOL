@@ -24,7 +24,8 @@ import {
   CheckSquare, 
   Square, 
   Share2,
-  Lock
+  Lock,
+  Sliders
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -629,285 +630,319 @@ export default function KPIRecordsPanel({
         </div>
       </div>
 
-      {/* Google Keep Workspace Block */}
-      <div className="bg-white p-6 rounded-2xl border border-amber-100 shadow-sm space-y-5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-amber-50 pb-4">
+      {/* Google Keep Workspace Block — Collapsed by default */}
+      <div className="bg-white rounded-2xl border border-amber-100 shadow-sm space-y-5">
+        <button
+          type="button"
+          onClick={() => setKeepExpanded((prev) => !prev)}
+          className="w-full flex items-center justify-between gap-3 p-5 pb-4 focus:outline-none"
+        >
           <div className="flex items-center gap-3">
             <div className="bg-amber-100 text-amber-600 p-2.5 rounded-xl border border-amber-200">
               <Lightbulb className="w-5 h-5 text-amber-500 fill-amber-300" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h2 className="text-lg font-bold font-display text-slate-800">Google Keep Clinical Workspace</h2>
+                <h2 className="text-sm font-bold font-display text-slate-800">Google Keep Clinical Workspace</h2>
                 <span className="text-[10px] uppercase font-extrabold tracking-wider bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">REST Link</span>
               </div>
-              <p className="text-xs text-slate-400">Capture local clinical observations, audit reviews, and operational decisions linked to {formatPeriod(activePeriod)}.</p>
+              <p className="text-[11px] text-slate-400">Clinical notes, audit reviews, and operational decisions.</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {keepConnected ? (
-              <div className="flex items-center gap-2">
-                <span className="flex h-2 w-2 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span className="text-[11px] font-bold text-emerald-700">Cloud REST Synced</span>
-                <button
-                  type="button"
-                  onClick={handleDisconnectKeep}
-                  className="text-[10px] text-slate-400 hover:text-slate-600 font-semibold underline px-1 cursor-pointer"
-                >
-                  Unlink Client
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSyncWithGoogleKeepAPI}
-                disabled={keepSyncing}
-                className="py-1 px-3 bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-700 font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {keepSyncing ? (
-                  <>
-                    <RefreshCw className="w-3 h-3 animate-spin text-amber-500" />
-                    <span>Authorizing Keep REST...</span>
-                  </>
-                ) : (
-                  <>
-                    <CloudOff className="w-3.5 h-3.5" />
-                    <span>Connect Google Keep Client</span>
-                  </>
-                )}
-              </button>
-            )}
-
-            <button
+            <Button
               type="button"
-              onClick={() => setShowConnectModal(!showConnectModal)}
-              className="p-1 text-slate-400 hover:text-slate-600"
-              title="Google Keep Integration Manual"
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                setKeepExpanded(true);
+              }}
+              className="h-8 px-2.5 text-[11px] font-semibold"
             >
-              <HelpCircle className="w-4 h-4" />
-            </button>
+              Open Workspace
+            </Button>
+            <Sliders className="h-4 w-4 text-slate-400" />
           </div>
-        </div>
+        </button>
 
-        {/* Integration Instructions Alert */}
-        <AnimatePresence>
-          {showConnectModal && (
-            <motion.div 
+        <AnimatePresence initial={false}>
+          {keepExpanded && (
+            <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="p-4 bg-amber-50/75 border border-amber-100 rounded-xl text-xs text-amber-900 space-y-2 overflow-hidden"
+              className="px-5 pb-5 overflow-hidden"
             >
-              <div className="font-bold flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-amber-600" />
-                <span>Google OAuth Enterprise Tenant Scope Directive</span>
-              </div>
-              <p className="leading-relaxed">
-                By clicking <strong>Connect Google Keep Client</strong>, the application attempts authentication using standard consumer client IDs. Because Google Keep REST API is heavily restricted to enterprises, the app maintains an <strong>Offline Ledger System</strong> which is fully encrypted and stored locally in your browser workspace! This ensures you can seamlessly use Keep-compatible interactive sticky sheets immediately without a GCP credential configuration.
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left panel: Add new Note container */}
-          <div className="lg:col-span-4 space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-              <Plus className="w-3.5 h-3.5 text-indigo-500" /> Add Clinical Keep Note
-            </h3>
-
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="Title (e.g., Audit program review)"
-                value={noteTitle}
-                onChange={(e) => setNoteTitle(e.target.value)}
-                className="w-full bg-white text-xs border border-slate-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-amber-500 font-semibold text-slate-800"
-              />
-
-              <textarea
-                placeholder="Take a clinical note / itemize performance observations..."
-                value={noteBody}
-                onChange={(e) => setNoteBody(e.target.value)}
-                rows={3}
-                className="w-full bg-white text-xs border border-slate-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-amber-500 text-slate-700"
-              />
-
-              {/* Tag note to a Specific Indicator KPI */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400">LINK TO KPI INDICATOR</label>
-                <select
-                  value={noteKpiId}
-                  onChange={(e) => setNoteKpiId(e.target.value)}
-                  className="w-full bg-white text-xs border border-slate-200 rounded-lg py-1.5 px-2 text-slate-700 font-medium"
-                >
-                  <option value="general">🎫 General/Standalone Program Note</option>
-                  {kpis.map(k => (
-                    <option key={k.id} value={k.id}>
-                      #{k.id} - {k.name.slice(0, 42)}...
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Pastel palette chooser */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400">STICKY PALETTE COLOR</label>
-                <div className="flex items-center gap-1.5">
-                  {(['yellow', 'teal', 'rose', 'amber', 'indigo', 'slate'] as const).map(col => {
-                    const bgMap = {
-                      yellow: 'bg-amber-100 border-amber-300',
-                      teal: 'bg-teal-100 border-teal-300',
-                      rose: 'bg-rose-100 border-rose-300',
-                      amber: 'bg-orange-100 border-orange-300',
-                      indigo: 'bg-indigo-100 border-indigo-300',
-                      slate: 'bg-slate-200 border-slate-400'
-                    };
-                    return (
+              <div className="border-t border-amber-50 pt-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-amber-50">
+                  <div className="flex items-center gap-2">
+                    {keepConnected ? (
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-2 w-2 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span className="text-[11px] font-bold text-emerald-700">Cloud REST Synced</span>
+                        <button
+                          type="button"
+                          onClick={handleDisconnectKeep}
+                          className="text-[10px] text-slate-400 hover:text-slate-600 font-semibold underline px-1 cursor-pointer"
+                        >
+                          Unlink Client
+                        </button>
+                      </div>
+                    ) : (
                       <button
-                        key={col}
                         type="button"
-                        onClick={() => setNoteColor(col)}
-                        className={`w-5 h-5 rounded-full border transition-all ${bgMap[col]} ${
-                          noteColor === col ? 'ring-2 ring-indigo-500 ring-offset-1 scale-110' : 'opacity-80 hover:opacity-100'
-                        }`}
-                        title={col}
-                      />
-                    );
-                  })}
+                        onClick={handleSyncWithGoogleKeepAPI}
+                        disabled={keepSyncing}
+                        className="py-1.5 px-3 bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-700 font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {keepSyncing ? (
+                          <>
+                            <RefreshCw className="w-3 h-3 animate-spin text-amber-500" />
+                            <span>Authorizing Keep REST...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CloudOff className="w-3.5 h-3.5" />
+                            <span>Connect Google Keep Client</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setShowConnectModal(!showConnectModal)}
+                      className="p-1 text-slate-400 hover:text-slate-600"
+                      title="Google Keep Integration Manual"
+                    >
+                      <HelpCircle className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <button
-                type="button"
-                onClick={handleAddKeepNote}
-                className="w-full py-2 bg-amber-500 hover:bg-amber-600 hover:shadow-sm text-white font-extrabold text-xs rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <Save className="w-3.5 h-3.5" /> Save Sticky Note
-              </button>
-            </div>
-          </div>
+                <AnimatePresence>
+                  {showConnectModal && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="p-4 bg-amber-50/75 border border-amber-100 rounded-xl text-xs text-amber-900 space-y-2 overflow-hidden"
+                    >
+                      <div className="font-bold flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Google OAuth Enterprise Tenant Scope Directive</span>
+                      </div>
+                      <p className="leading-relaxed">
+                        By clicking <strong>Connect Google Keep Client</strong>, the application attempts authentication using standard consumer client IDs. Because Google Keep REST API is heavily restricted to enterprises, the app maintains an <strong>Offline Ledger System</strong> which is fully encrypted and stored locally in your browser workspace! This ensures you can seamlessly use Keep-compatible interactive sticky sheets immediately without a GCP credential configuration.
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-          {/* Right panel: Keep Notes Visual Ledger Board */}
-          <div className="lg:col-span-8 flex flex-col space-y-3">
-            {/* Filter bar for Google Keep ledger */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-              <div className="flex items-center gap-1">
-                <input
-                  type="text"
-                  placeholder="Search inside keep notes..."
-                  value={searchNoteQuery}
-                  onChange={(e) => setSearchNoteQuery(e.target.value)}
-                  className="bg-white border border-slate-200 text-[11px] rounded-lg px-2 py-1 w-full sm:w-44 focus:ring-1 focus:ring-amber-500"
-                />
-              </div>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Left panel: Add new Note container */}
+                  <div className="lg:col-span-4 space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                      <Plus className="w-3.5 h-3.5 text-indigo-500" /> Add Clinical Keep Note
+                    </h3>
 
-              <div className="flex items-center gap-1.5">
-                <label className="text-slate-500 text-[11px] font-semibold flex items-center gap-1.5 select-none cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={filterNotesByPeriodOnly}
-                    onChange={(e) => setFilterNotesByPeriodOnly(e.target.checked)}
-                    className="rounded border-slate-200 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5"
-                  />
-                  <span>Show {formatPeriod(activePeriod)} logs only</span>
-                </label>
-              </div>
-            </div>
+                    <div className="space-y-3">
+                      <input
+                        type="text"
+                        placeholder="Title (e.g., Audit program review)"
+                        value={noteTitle}
+                        onChange={(e) => setNoteTitle(e.target.value)}
+                        className="w-full bg-white text-xs border border-slate-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-amber-500 font-semibold text-slate-800"
+                      />
 
-            {/* Note Dashboard Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[290px] overflow-y-auto pr-1">
-              {filteredKeepNotes.map(note => {
-                const colorBgClasses = {
-                  yellow: 'bg-amber-50/80 border-amber-200 text-amber-900',
-                  teal: 'bg-teal-50/80 border-teal-200 text-teal-900',
-                  rose: 'bg-rose-50/80 border-rose-200 text-rose-900',
-                  amber: 'bg-orange-50/80 border-orange-200 text-orange-900',
-                  indigo: 'bg-indigo-50/80 border-indigo-200 text-indigo-900',
-                  slate: 'bg-slate-50/80 border-slate-200 text-slate-900'
-                };
+                      <textarea
+                        placeholder="Take a clinical note / itemize performance observations..."
+                        value={noteBody}
+                        onChange={(e) => setNoteBody(e.target.value)}
+                        rows={3}
+                        className="w-full bg-white text-xs border border-slate-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-amber-500 text-slate-700"
+                      />
 
-                const linkedKpi = note.kpiId ? kpis.find(k => k.id === note.kpiId) : null;
+                      {/* Tag note to a Specific Indicator KPI */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400">LINK TO KPI INDICATOR</label>
+                        <select
+                          value={noteKpiId}
+                          onChange={(e) => setNoteKpiId(e.target.value)}
+                          className="w-full bg-white text-xs border border-slate-200 rounded-lg py-1.5 px-2 text-slate-700 font-medium"
+                        >
+                          <option value="general">🎫 General/Standalone Program Note</option>
+                          {kpis.map(k => (
+                            <option key={k.id} value={k.id}>
+                              #{k.id} - {k.name.slice(0, 42)}...
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                return (
-                  <div
-                    key={note.id}
-                    className={`p-3.5 rounded-xl border shadow-sm flex flex-col justify-between gap-2.5 transition-all relative ${colorBgClasses[note.color]} hover:shadow-md`}
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <h4 className="font-bold text-xs tracking-tight line-clamp-1">{note.title}</h4>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleTogglePinNote(note.id)}
-                            className={`p-0.5 rounded transition-colors hover:bg-black/5 ${
-                              note.pinned ? 'text-amber-600' : 'text-slate-400'
-                            }`}
-                            title={note.pinned ? "Unpin Note" : "Pin Note"}
-                          >
-                            <Pin className={`w-3 h-3 ${note.pinned ? 'fill-amber-400 text-amber-500' : ''}`} />
-                          </button>
+                      {/* Pastel palette chooser */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400">STICKY PALETTE COLOR</label>
+                        <div className="flex items-center gap-1.5">
+                          {(['yellow', 'teal', 'rose', 'amber', 'indigo', 'slate'] as const).map(col => {
+                            const bgMap = {
+                              yellow: 'bg-amber-100 border-amber-300',
+                              teal: 'bg-teal-100 border-teal-300',
+                              rose: 'bg-rose-100 border-rose-300',
+                              amber: 'bg-orange-100 border-orange-300',
+                              indigo: 'bg-indigo-100 border-indigo-300',
+                              slate: 'bg-slate-200 border-slate-400'
+                            };
+                            return (
+                              <button
+                                key={col}
+                                type="button"
+                                onClick={() => setNoteColor(col)}
+                                className={`w-5 h-5 rounded-full border transition-all ${bgMap[col]} ${
+                                  noteColor === col ? 'ring-2 ring-indigo-500 ring-offset-1 scale-110' : 'opacity-80 hover:opacity-100'
+                                }`}
+                                title={col}
+                              />
+                            );
+                          })}
                         </div>
                       </div>
 
-                      <p className="text-[11px] mt-1 text-slate-700 leading-normal line-clamp-4 whitespace-pre-wrap">{note.body}</p>
-                    </div>
-
-                    <div className="border-t border-black/5 pt-2 flex items-center justify-between text-[9px] text-slate-400 font-mono">
-                      <div className="flex flex-col gap-0.5 max-w-[70%]">
-                        <span>Period: {note.period ? formatPeriod(note.period) : 'General'}</span>
-                        {linkedKpi && (
-                          <span className="text-[9px] text-indigo-700 bg-indigo-50 rounded px-1 py-0.2 shrink-0 line-clamp-1 font-bold">
-                            #{linkedKpi.id} {linkedKpi.name.slice(0, 20)}...
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1 ml-auto">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (navigator.share) {
-                              navigator.share({ title: note.title, text: note.body });
-                            } else {
-                              navigator.clipboard.writeText(`[Clinical Keep Note - ${note.title}]\n\n${note.body}`);
-                              toast.success('Copied to clipboard');
-                            }
-                          }}
-                          className="p-1 hover:bg-black/5 rounded text-indigo-600"
-                          title="Share note text"
-                        >
-                          <Share2 className="w-3 h-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteKeepNote(note.id, note.title)}
-                          className="p-1 hover:bg-black/5 rounded text-rose-600"
-                          title="Delete Note"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddKeepNote}
+                        className="w-full py-2 bg-amber-500 hover:bg-amber-600 hover:shadow-sm text-white font-extrabold text-xs rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Save className="w-3.5 h-3.5" /> Save Sticky Note
+                      </button>
                     </div>
                   </div>
-                );
-              })}
 
-              {filteredKeepNotes.length === 0 && (
-                <div className="col-span-2 p-12 text-center text-slate-400 border border-dashed rounded-xl bg-slate-50 border-slate-200">
-                  <Lightbulb className="w-8 h-8 text-slate-300 mx-auto" />
-                  <p className="text-xs font-bold text-slate-500 mt-1">No Clinical Keep Notes Found</p>
-                  <p className="text-[10px] text-slate-400">Jot some down in the panel or adjust active filters!</p>
+                  {/* Right panel: Keep Notes Visual Ledger Board */}
+                  <div className="lg:col-span-8 flex flex-col space-y-3">
+                    {/* Filter bar for Google Keep ledger */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          placeholder="Search inside keep notes..."
+                          value={searchNoteQuery}
+                          onChange={(e) => setSearchNoteQuery(e.target.value)}
+                          className="bg-white border border-slate-200 text-[11px] rounded-lg px-2 py-1 w-full sm:w-44 focus:ring-1 focus:ring-amber-500"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <label className="text-slate-500 text-[11px] font-semibold flex items-center gap-1.5 select-none cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={filterNotesByPeriodOnly}
+                            onChange={(e) => setFilterNotesByPeriodOnly(e.target.checked)}
+                            className="rounded border-slate-200 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5"
+                          />
+                          <span>Show {formatPeriod(activePeriod)} logs only</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Note Dashboard Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[290px] overflow-y-auto pr-1">
+                      {filteredKeepNotes.map(note => {
+                        const colorBgClasses = {
+                          yellow: 'bg-amber-50/80 border-amber-200 text-amber-900',
+                          teal: 'bg-teal-50/80 border-teal-200 text-teal-900',
+                          rose: 'bg-rose-50/80 border-rose-200 text-rose-900',
+                          amber: 'bg-orange-50/80 border-orange-200 text-orange-900',
+                          indigo: 'bg-indigo-50/80 border-indigo-200 text-indigo-900',
+                          slate: 'bg-slate-50/80 border-slate-200 text-slate-900'
+                        };
+
+                        const linkedKpi = note.kpiId ? kpis.find(k => k.id === note.kpiId) : null;
+
+                        return (
+                          <div
+                            key={note.id}
+                            className={`p-3.5 rounded-xl border shadow-sm flex flex-col justify-between gap-2.5 transition-all relative ${colorBgClasses[note.color]} hover:shadow-md`}
+                          >
+                            <div>
+                              <div className="flex items-start justify-between gap-2">
+                                <h4 className="font-bold text-xs tracking-tight line-clamp-1">{note.title}</h4>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTogglePinNote(note.id)}
+                                    className={`p-0.5 rounded transition-colors hover:bg-black/5 ${
+                                      note.pinned ? 'text-amber-600' : 'text-slate-400'
+                                    }`}
+                                    title={note.pinned ? "Unpin Note" : "Pin Note"}
+                                  >
+                                    <Pin className={`w-3 h-3 ${note.pinned ? 'fill-amber-400 text-amber-500' : ''}`} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <p className="text-[11px] mt-1 text-slate-700 leading-normal line-clamp-4 whitespace-pre-wrap">{note.body}</p>
+                            </div>
+
+                            <div className="border-t border-black/5 pt-2 flex items-center justify-between text-[9px] text-slate-400 font-mono">
+                              <div className="flex flex-col gap-0.5 max-w-[70%]">
+                                <span>Period: {note.period ? formatPeriod(note.period) : 'General'}</span>
+                                {linkedKpi && (
+                                  <span className="text-[9px] text-indigo-700 bg-indigo-50 rounded px-1 py-0.2 shrink-0 line-clamp-1 font-bold">
+                                    #{linkedKpi.id} {linkedKpi.name.slice(0, 20)}...
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1 ml-auto">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (navigator.share) {
+                                      navigator.share({ title: note.title, text: note.body });
+                                    } else {
+                                      navigator.clipboard.writeText(`[Clinical Keep Note - ${note.title}]\n\n${note.body}`);
+                                      toast.success('Copied to clipboard');
+                                    }
+                                  }}
+                                  className="p-1 hover:bg-black/5 rounded text-indigo-600"
+                                  title="Share note text"
+                                >
+                                  <Share2 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteKeepNote(note.id, note.title)}
+                                  className="p-1 hover:bg-black/5 rounded text-rose-600"
+                                  title="Delete Note"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {filteredKeepNotes.length === 0 && (
+                        <div className="col-span-2 p-12 text-center text-slate-400 border border-dashed rounded-xl bg-slate-50 border-slate-200">
+                          <Lightbulb className="w-8 h-8 text-slate-300 mx-auto" />
+                          <p className="text-xs font-bold text-slate-500 mt-1">No Clinical Keep Notes Found</p>
+                          <p className="text-[10px] text-slate-400">Jot some down in the panel or adjust active filters!</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Registers Grid List */}
