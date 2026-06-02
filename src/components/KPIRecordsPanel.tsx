@@ -315,7 +315,8 @@ export default function KPIRecordsPanel({
 
   // Filter and search KPIs
   const filteredKPIs = useMemo(() => {
-    return kpis.filter(kpi => {
+    const safeKpis = Array.isArray(kpis) ? kpis : [];
+    return safeKpis.filter(kpi => {
       const category = getKPIGroup(kpi.name);
       const matchesCategory = filterCategory === 'All' || category === filterCategory;
       const matchesSearch = kpi.name.toLowerCase().includes(searchQuery.toLowerCase());

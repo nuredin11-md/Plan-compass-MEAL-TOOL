@@ -369,7 +369,8 @@ export default function RecognitionBoard({
     }
   };
   const rankedDepts = useMemo(() => {
-    const months = PERIOD_MAP[selectedInterval]?.[selectedPeriod] || PERIOD_MAP.annual["Annual Summary"];
+    const months = (PERIOD_MAP as any)[selectedInterval]?.[selectedPeriod] || (PERIOD_MAP as any).annual["Annual Summary"];
+    if (!indicators || !monthlyData || !activeCriteria || !months) return [];
 
     return DEPARTMENTS.map((deptName, idx) => {
       // Find custom criteria loaded for this department category

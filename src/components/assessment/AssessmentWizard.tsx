@@ -129,15 +129,14 @@ export default function AssessmentWizard({
   }, [selectedDate, setValue]);
 
   // Score calculations live preview
-  const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Section A"));
+const itemsA = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Section A"));
   const itemsB = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Section B"));
   const itemsC = DEFAULT_ASSESSMENT_ITEMS.filter(i => i.section_name.includes("Section C"));
 
-  const scoreSummary = calculateSectionScores(DEFAULT_ASSESSMENT_ITEMS, formValues.responses || {});
+  const scoreSummary = useMemo(() => calculateSectionScores(DEFAULT_ASSESSMENT_ITEMS, formValues.responses || {}), [formValues.responses]);
 
   const handleNext = async () => {
-    // Validate current step fields before proceeding
-    let fieldsToValidate: any[] = [];
+    let fieldsToValidate: string[] = [];
     if (currentStep === 0) {
       fieldsToValidate = ['assessment_date', ...itemsA.map(i => `responses.${i.id}`)];
     } else if (currentStep === 1) {
@@ -145,6 +144,58 @@ export default function AssessmentWizard({
     } else if (currentStep === 2) {
       fieldsToValidate = itemsC.map(i => `responses.${i.id}`);
     }
+
+    const isStepValid = await trigger(fieldsToValidate as any);
+    if (isStepValid) {
+      setSubmitError(null);
+      setCurrentStep((p) => p + 1);
+    } else {
+      setSubmitError('Please make sure all questions are answered, and provide required remarks for any scores under 50% before advancing.');
+    }
+  };
+
+  const handleBack = () => {
+    setSubmitError(null);
+    setCurrentStep((p) => Math.max(0, p - 1));
+  };
+
+  const handleSaveChecklist = async () => {
+    setSubmitError(null);
+    const isValid = await trigger();
+    if (!isValid) {
+      setSubmitError('Please complete the required fields before submitting.');
+      return;
+    }
+    const data = methods.getValues();
+    setLastSavedId(null);
+    setSuccessScore(null);
+    try {
+      const profile = {
+        name: data.facility.name,
+        code: data.facility.code,
+        region: data.facility.region,
+        zone: data.facility.zone,
+        woreda: data.facility.woreda,
+        assessment_date: data.assessment_date,
+        quarter: data.quarter,
+      };
+      const formattedResponses = Object.entries(data.responses || {}).map(([item_id, resVal]: [string, any]) => ({
+        item_id,
+        score_achieved: Number(resVal?.score_achieved) || 0,
+        remarks: resVal?.remarks || '',
+      }));
+      const res = await submitAssessment(profile, formattedResponses, scoreSummary.overallPercentage);
+      if (res?.success) {
+        setLastSavedId(res.id || 'success-simulated-id');
+        setSuccessScore(scoreSummary.overallPercentage);
+        setCurrentStep(4);
+      } else {
+        setSubmitError(res?.error || 'Submission transaction failed.');
+      }
+    } catch (err: any) {
+      setSubmitError(err?.message || 'Unexpected error while saving assessment.');
+    }
+  };
 
     const isStepValid = await trigger(fieldsToValidate as any);
     if (isStepValid) {
@@ -160,44 +211,33 @@ export default function AssessmentWizard({
     setCurrentStep(prev => prev - 1);
   };
 
-  const onSubmit = async (data: AssessmentFormValues) => {
+  const handleSaveChecklist = async () => {
     setSubmitError(null);
-    setLastSavedId(null);
+    const isValid = await trigger();
+    if (!isValid) {
+      setSubmitError('Please complete the required fields before submitting.');
+      return;
+    }
+    const data = methods.getValues();
     try {
-      let outcome;
-      if (onSave) {
-        outcome = await onSave(data);
+      const res = await submitAssessment(
+        { ...data.facility, assessment_date: data.assessment_date, quarter: data.quarter },
+        Object.entries(data.responses).map(([item_id, r]: any) => ({
+          item_id,
+          score_achieved: Number(r?.score_achieved) || 0,
+          remarks: r?.remarks || '',
+        })),
+        scoreSummary.overallPercentage
+      );
+      if (res?.success) {
+        toast.success('HIS Assessment checklist saved successfully');
       } else {
-        const profile = {
-          name: data.facility.name,
-          code: data.facility.code,
-          region: data.facility.region,
-          zone: data.facility.zone,
-          woreda: data.facility.woreda,
-          assessment_date: data.assessment_date,
-          quarter: data.quarter
-        };
-        const formattedResponses = Object.entries(data.responses).map(([itemId, resVal]: [string, any]) => ({
-          item_id: itemId,
-          score_achieved: Number(resVal.score_achieved) || 0,
-          remarks: resVal.remarks || ""
-        }));
-        const res = await submitAssessment(profile, formattedResponses, scoreSummary.overallPercentage);
-        outcome = {
-          success: !!res?.success,
-          id: res?.id,
-          score: scoreSummary.overallPercentage,
-          error: res?.success ? undefined : (res as any)?.error
-        };
+        toast.error(res?.error || 'Assessment not saved. Check required fields.');
       }
-
-      if (outcome.success) {
-        setLastSavedId(outcome.id || "success-simulated-id");
-        setSuccessScore(outcome.score ?? scoreSummary.overallPercentage);
-        setCurrentStep(4); // completion screen
-      } else {
-        setSubmitError(outcome.error || "Submission transaction failed.");
-      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Unexpected error while saving assessment');
+    }
+  };
     } catch (err: any) {
       setSubmitError(err.message || "An exception occurred during transaction operations.");
     }
@@ -231,7 +271,7 @@ export default function AssessmentWizard({
                 </span>
               </div>
               <h1 className="text-xl md:text-2xl font-bold tracking-tight mt-2 flex items-center gap-2">
-                Hospital Data Assessment Checklist
+                Hospital HIS Assessment Checklist
               </h1>
               <p className="text-emerald-100 text-xs mt-1 max-w-xl font-medium leading-relaxed">
                 Standardized Evaluation Tool tracking structure compliance, quality checks, and reporting integrity.

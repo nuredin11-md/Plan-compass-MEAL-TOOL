@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS public.responses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   assessment_id TEXT NOT NULL REFERENCES public.assessments(id) ON DELETE CASCADE,
   item_id TEXT NOT NULL,
-  score_achieved INTEGER NOT NULL DEFAULT 0,
+  score_achieved NUMERIC NOT NULL DEFAULT 0,
   remarks TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(assessment_id, item_id)
