@@ -46,29 +46,42 @@ ALTER TABLE public.hospital_kpi_definitions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hospital_kpi_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hospital_action_plans ENABLE ROW LEVEL SECURITY;
 
+-- Policies
+DROP POLICY IF EXISTS "Authenticated users can read kpi definitions" ON public.hospital_kpi_definitions;
 CREATE POLICY "Authenticated users can read kpi definitions"
   ON public.hospital_kpi_definitions FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Authenticated users can insert kpi definitions" ON public.hospital_kpi_definitions;
 CREATE POLICY "Authenticated users can insert kpi definitions"
   ON public.hospital_kpi_definitions FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can update kpi definitions" ON public.hospital_kpi_definitions;
 CREATE POLICY "Authenticated users can update kpi definitions"
   ON public.hospital_kpi_definitions FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can delete kpi definitions" ON public.hospital_kpi_definitions;
 CREATE POLICY "Authenticated users can delete kpi definitions"
   ON public.hospital_kpi_definitions FOR DELETE TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can read kpi records" ON public.hospital_kpi_records;
 CREATE POLICY "Authenticated users can read kpi records"
   ON public.hospital_kpi_records FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Authenticated users can insert kpi records" ON public.hospital_kpi_records;
 CREATE POLICY "Authenticated users can insert kpi records"
   ON public.hospital_kpi_records FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can update kpi records" ON public.hospital_kpi_records;
 CREATE POLICY "Authenticated users can update kpi records"
   ON public.hospital_kpi_records FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can delete kpi records" ON public.hospital_kpi_records;
 CREATE POLICY "Authenticated users can delete kpi records"
   ON public.hospital_kpi_records FOR DELETE TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can read action plans" ON public.hospital_action_plans;
 CREATE POLICY "Authenticated users can read action plans"
   ON public.hospital_action_plans FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Authenticated users can insert action plans" ON public.hospital_action_plans;
 CREATE POLICY "Authenticated users can insert action plans"
   ON public.hospital_action_plans FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can update action plans" ON public.hospital_action_plans;
 CREATE POLICY "Authenticated users can update action plans"
   ON public.hospital_action_plans FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can delete action plans" ON public.hospital_action_plans;
 CREATE POLICY "Authenticated users can delete action plans"
   ON public.hospital_action_plans FOR DELETE TO authenticated USING (true);
