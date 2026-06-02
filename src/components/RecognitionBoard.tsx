@@ -1,15 +1,17 @@
 import { useState, useMemo, useEffect } from "react";
 import {
   Trophy, Medal, Star, Award, TrendingUp, TrendingDown, Minus,
-  CheckCircle2, Settings2, ChevronRight, BarChart3, CalendarDays, Plus
+  CheckCircle2, Settings2, ChevronRight, BarChart3, CalendarDays, Plus, Trash2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import type { Indicator, MonthlyEntry } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
-import { toast } from "sonner";
+import { useAppraisalCriteria, AppraisalCriterion } from "@/hooks/useAppraisalCriteria";
  
 // ── Types ─────────────────────────────────────────────────────────────────────
  
@@ -164,7 +166,7 @@ const PodiumCard = ({
  
 // Leaderboard Row ───────────────────────────────────────────────────────────
  
-const LeaderboardRow = ({ dept, rank, activeCriteria }: { dept: DeptScore; rank: number; activeCriteria: CustomCriteria[] }) => {
+const LeaderboardRow = ({ dept, rank, activeCriteria }: { dept: DeptScore; rank: number; activeCriteria: AppraisalCriterion[] }) => {
   const [open, setOpen] = useState(false);
   const badge = rank <= 3 ? (["gold", "silver", "bronze"] as const)[rank - 1] : "none";
   const cfg = MEDAL_CONFIG[badge];
@@ -280,138 +282,122 @@ export default function RecognitionBoard({
     }
   }, [selectedInterval]);
 
-  // Handle custom criteria state
-  const [criteria, setCriteria] = useState<CustomCriteria[]>(() => {
-    const cached = localStorage.getItem("plan_compass_recognition_custom_criteria");
-    if (cached) {
-      try { return JSON.parse(cached); } catch (e) {}
-    }
-    // Standard default template values if empty
-    return [
-      {
-        id: "crit-1",
-        name: "Maternal & Child Health Care Access",
-        efy: "2018 EFY",
-        weight: 35,
-        departmentCategories: ["Maternal & Child Health", "Child Health", "EPI"],
-        linkedIndicatorCodes: []
-      },
-      {
-        id: "crit-2",
-        name: "Surgical & Hospital Utilization Efficiency",
-        efy: "2018 EFY",
-        weight: 25,
-        departmentCategories: ["Surgical Services", "Hospital Utilization"],
-        linkedIndicatorCodes: []
-      },
-      {
-        id: "crit-3",
-        name: "Quality Assurance & IPC Standards",
-        efy: "2018 EFY",
-        weight: 20,
-        departmentCategories: ["Quality & Safety", "Pharmacy", "Blood Bank"],
-        linkedIndicatorCodes: []
-      },
-      {
-        id: "crit-4",
-        name: "Public Health Disease Control & Nutrition",
-        efy: "2018 EFY",
-        weight: 20,
-        departmentCategories: ["Tuberculosis", "HIV Prevention and Control", "Non-Communicable Diseases", "Nutrition"],
-        linkedIndicatorCodes: []
-      }
-    ];
-  });
-
-  // Track to save
-  useEffect(() => {
-    localStorage.setItem("plan_compass_recognition_custom_criteria", JSON.stringify(criteria));
-  }, [criteria]);
-
-  // Criteria manager state
+  const [editingCriterion, setEditingCriterion] = useState<AppraisalCriterion | null>(null);
   const [showManager, setShowManager] = useState(false);
-  const [editingCriterion, setEditingCriterion] = useState<CustomCriteria | null>(null);
-  
-  // Form states
+
   const [newName, setNewName] = useState("");
   const [newWeight, setNewWeight] = useState(25);
   const [newDepts, setNewDepts] = useState<string[]>([]);
   const [newIndCodes, setNewIndCodes] = useState<string[]>([]);
 
-  // Get filtered active criteria based on current year EFY
-  const activeCriteria = useMemo(() => {
-    let list = criteria.filter(c => c.efy === selectedEFY);
-    if (list.length === 0) {
-      // Auto-populate beautiful defaults for newly selected EFY
-      list = [
-        {
-          id: `crit-1-${selectedEFY}`,
-          name: "Maternal & Child Health Care Access",
-          efy: selectedEFY,
-          weight: 35,
-          departmentCategories: ["Maternal & Child Health", "Child Health", "EPI"],
-          linkedIndicatorCodes: []
-        },
-        {
-          id: `crit-2-${selectedEFY}`,
-          name: "Surgical & Hospital Utilization Efficiency",
-          efy: selectedEFY,
-          weight: 25,
-          departmentCategories: ["Surgical Services", "Hospital Utilization"],
-          linkedIndicatorCodes: []
-        },
-        {
-          id: `crit-3-${selectedEFY}`,
-          name: "Quality Assurance & IPC Standards",
-          efy: selectedEFY,
-          weight: 20,
-          departmentCategories: ["Quality & Safety", "Pharmacy", "Blood Bank"],
-          linkedIndicatorCodes: []
-        },
-        {
-          id: `crit-4-${selectedEFY}`,
-          name: "Public Health Disease Control & Nutrition",
-          efy: selectedEFY,
-          weight: 20,
-          departmentCategories: ["Tuberculosis", "HIV Prevention and Control", "Non-Communicable Diseases", "Nutrition"],
-          linkedIndicatorCodes: []
-        }
-      ];
-    }
-    return list;
-  }, [criteria, selectedEFY]);
+  const {
+    activeCriteria,
+    loading: criteriaLoading,
+    selectedEFY: critEFY,
+    setSelectedEFY: setCritEFY,
+    addCriterion,
+    updateCriterion,
+    deleteCriterion,
+    reload: reloadCriteria,
+    availableIndicatorsForDepts,
+  } = useAppraisalCriteria(indicators);
 
-  // Dynamically compute department scores from real indicators & monthlyData
+  useEffect(() => {
+    if (showManager && critEFY !== selectedEFY) {
+      setCritEFY(selectedEFY);
+    }
+  }, [showManager, critEFY, selectedEFY, setCritEFY]);
+
+  const handleSaveCriterion = async () => {
+    if (!newName.trim()) {
+      toast.error("Criterion name is required!");
+      return;
+    }
+
+    const deptPayload = newDepts.length > 0 ? newDepts : DEPARTMENTS;
+    const totalWeight = activeCriteria.reduce((sum, c) => sum + c.weight, 0);
+    const currentWeightLimit = totalWeight - (editingCriterion ? editingCriterion.weight : 0) + newWeight;
+
+    if (currentWeightLimit > 105) {
+      toast.warning(`Warning: Total weights are aggregating to ${currentWeightLimit}%. We recommend targeting 100%.`);
+    }
+
+    try {
+      if (editingCriterion) {
+        await updateCriterion(editingCriterion.id, {
+          name: newName,
+          weight: newWeight,
+          departmentCategories: deptPayload,
+          linkedIndicatorCodes: newIndCodes,
+        });
+        toast.success("Criterion updated successfully");
+      } else {
+        await addCriterion({
+          name: newName,
+          efy: selectedEFY,
+          weight: newWeight,
+          departmentCategories: deptPayload,
+          linkedIndicatorCodes: newIndCodes,
+        });
+        toast.success("Criterion created successfully");
+      }
+
+      setEditingCriterion(null);
+      setNewName("");
+      setNewWeight(25);
+      setNewDepts([]);
+      setNewIndCodes([]);
+    } catch (err) {
+      // errors handled in hook
+    }
+  };
+
+  const handleEditCriterion = (crit: AppraisalCriterion) => {
+    setEditingCriterion(crit);
+    setNewName(crit.name);
+    setNewWeight(crit.weight);
+    setNewDepts(crit.departmentCategories);
+    setNewIndCodes(crit.linkedIndicatorCodes);
+    setShowManager(true);
+  };
+
+  const handleDeleteCriterion = async (id: string) => {
+    try {
+      await deleteCriterion(id);
+    } catch (err) {
+      // error handled in hook
+    }
+  };
   const rankedDepts = useMemo(() => {
     const months = PERIOD_MAP[selectedInterval]?.[selectedPeriod] || PERIOD_MAP.annual["Annual Summary"];
 
     return DEPARTMENTS.map((deptName, idx) => {
       // Find custom criteria loaded for this department category
-      const deptCriteria = activeCriteria.filter(c => c.departmentCategories.includes(deptName));
+      const deptCriteria = activeCriteria.filter((c) => c.departmentCategories.includes(deptName));
       // Fallback if none defined
       const effectiveCriteria = deptCriteria.length > 0 ? deptCriteria : activeCriteria;
 
       let totalWeightedScore = 0;
       let totalWeightUsed = 0;
 
-      const criterionReports = effectiveCriteria.map(crit => {
+      const criterionReports = effectiveCriteria.map((crit) => {
         // Link indicators for this department on this criterion
-        let linked = indicators.filter(ind => ind.programArea === deptName);
+        let linked = indicators.filter((ind) => ind.programArea === deptName);
         if (crit.linkedIndicatorCodes && crit.linkedIndicatorCodes.length > 0) {
-          linked = linked.filter(ind => crit.linkedIndicatorCodes.includes(ind.code));
+          linked = linked.filter((ind) => crit.linkedIndicatorCodes.includes(ind.code));
         }
 
         let totalAchievement = 0;
         let scoredCount = 0;
 
-        linked.forEach(ind => {
-          const periodData = monthlyData.filter(e => e.code === ind.code && months.includes(e.month));
+        linked.forEach((ind) => {
+          const periodData = monthlyData.filter((e) => e.code === ind.code && months.includes(e.month));
           const actualSum = periodData.reduce((sum, e) => sum + (e.actual ?? 0), 0);
 
           // Scaled Target mapping to reporting months count
           const targetScaled = (ind.target / 12) * months.length;
           const ratio = targetScaled > 0 ? actualSum / targetScaled : 0;
-          
+
           totalAchievement += Math.min(1.0, ratio) * 100; // Cap single progress score to 100%
           scoredCount++;
         });
@@ -421,8 +407,8 @@ export default function RecognitionBoard({
         if (scoredCount > 0) {
           score = Math.round(totalAchievement / scoredCount);
         } else {
-          // Provide an intelligent variation fallback across departments as realistic placeholder
-          const deptOffset = Math.abs(idx * 3 - 7) % 25;
+          // Intelligent fallback varies by department index so scoring isn't flat
+          const deptOffset = Math.abs(idx * 3 + 7) % 25;
           score = Math.max(50, 85 - deptOffset);
         }
 
@@ -433,13 +419,11 @@ export default function RecognitionBoard({
           label: crit.name,
           weight: crit.weight,
           score,
-          indicatorsList: linked.map(i => i.indicator)
+          indicatorsList: linked.map((i) => i.indicator),
         };
       });
 
-      const finalScore = totalWeightUsed > 0 
-        ? Math.round(totalWeightedScore / totalWeightUsed) 
-        : 75;
+      const finalScore = totalWeightUsed > 0 ? Math.round(totalWeightedScore / totalWeightUsed) : 75;
 
       const trends = ["up", "stable", "down", "stable", "up", "stable"] as const;
       const prevRanks = [2, 1, 4, 3, 5, 6, 8, 7, 9, 10, 11, 12];
@@ -639,47 +623,7 @@ export default function RecognitionBoard({
                   <Button
                     size="sm"
                     className="flex-1 text-xs"
-                    onClick={() => {
-                      if (!newName.trim()) {
-                        toast.error("Criterion name is required!");
-                        return;
-                      }
-                      
-                      const totalWeight = activeCriteria.reduce((sum, c) => sum + c.weight, 0);
-                      const currentWeightLimit = totalWeight - (editingCriterion ? editingCriterion.weight : 0) + newWeight;
-                      
-                      if (currentWeightLimit > 105) {
-                        toast.warning(`Warning: Total weights are aggregating to ${currentWeightLimit}%. We recommend targeting 100%.`);
-                      }
-
-                      if (editingCriterion) {
-                        setCriteria(prev => prev.map(c => c.id === editingCriterion.id ? {
-                          ...c,
-                          name: newName,
-                          weight: newWeight,
-                          departmentCategories: newDepts.length > 0 ? newDepts : DEPARTMENTS,
-                          linkedIndicatorCodes: newIndCodes
-                        } : c));
-                        toast.success("Criterion and weights updated!");
-                      } else {
-                        const newCrit: CustomCriteria = {
-                          id: `custom-crit-${Date.now()}`,
-                          name: newName,
-                          efy: selectedEFY,
-                          weight: newWeight,
-                          departmentCategories: newDepts.length > 0 ? newDepts : DEPARTMENTS,
-                          linkedIndicatorCodes: newIndCodes
-                        };
-                        setCriteria(prev => [...prev, newCrit]);
-                        toast.success("Criterion formulated successfully!");
-                      }
-                      
-                      // Reset fields
-                      setEditingCriterion(null);
-                      setNewName("");
-                      setNewDepts([]);
-                      setNewIndCodes([]);
-                    }}
+                    onClick={handleSaveCriterion}
                   >
                     {editingCriterion ? "Save Changes" : "Formulate"}
                   </Button>
@@ -745,13 +689,7 @@ export default function RecognitionBoard({
                           size="sm"
                           variant="ghost"
                           className="h-7 px-2 text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
-                          onClick={() => {
-                            setEditingCriterion(crit);
-                            setNewName(crit.name);
-                            setNewWeight(crit.weight);
-                            setNewDepts(crit.departmentCategories);
-                            setNewIndCodes(crit.linkedIndicatorCodes);
-                          }}
+                          onClick={() => handleEditCriterion(crit)}
                         >
                           Edit
                         </Button>
@@ -759,10 +697,7 @@ export default function RecognitionBoard({
                           size="sm"
                           variant="ghost"
                           className="h-7 px-2 text-[10px] font-bold text-red-650 hover:text-red-800"
-                          onClick={() => {
-                            setCriteria(prev => prev.filter(c => c.id !== crit.id));
-                            toast.success("Criterion removed.");
-                          }}
+                          onClick={() => handleDeleteCriterion(crit.id)}
                         >
                           Delete
                         </Button>

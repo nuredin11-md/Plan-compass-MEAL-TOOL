@@ -281,6 +281,45 @@ export type Database = {
         }
         Relationships: []
       }
+      appraisal_criteria: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          department_categories: string[]
+          efy: string
+          id: string
+          is_active: boolean
+          linked_indicator_codes: string[]
+          name: string
+          updated_at: string | null
+          weight: number
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          department_categories?: string[]
+          efy: string
+          id?: string
+          is_active?: boolean
+          linked_indicator_codes?: string[]
+          name: string
+          updated_at?: string | null
+          weight: number
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          department_categories?: string[]
+          efy?: string
+          id?: string
+          is_active?: boolean
+          linked_indicator_codes?: string[]
+          name?: string
+          updated_at?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
       indicators: {
         Row: {
           actual_value: number | null
