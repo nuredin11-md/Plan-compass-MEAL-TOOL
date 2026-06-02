@@ -290,7 +290,7 @@ export default function AssessmentWizard({
             </div>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit as any)} className="space-y-6">
+          <form onSubmit={handleSubmit(onsubmit as any)} className="space-y-6">
 
             {/* STEP 0: Section A Checklist + Date Selector */}
             {currentStep === 0 && (
