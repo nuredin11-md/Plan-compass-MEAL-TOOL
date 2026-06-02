@@ -25,7 +25,7 @@ CREATE TRIGGER tr_user_profiles_updated_at BEFORE UPDATE ON public.user_profiles
 
 -- 2. Create Indicators Table
 CREATE TABLE IF NOT EXISTS public.indicators (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
     department TEXT NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS public.indicators (
 
 -- 3. Create Monthly Entries Table (Historical Data for AI Analysis)
 CREATE TABLE IF NOT EXISTS public.monthly_entries (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     indicator_code TEXT REFERENCES public.indicators(code) ON DELETE CASCADE,
     month TEXT NOT NULL, -- e.g., 'Meskerem'
     year INTEGER NOT NULL, -- e.g., 2016
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS public.monthly_entries (
 -- 4. Create AI Analysis Cache Table
 -- To store expensive Gemini API responses and history
 CREATE TABLE IF NOT EXISTS public.ai_analysis_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     department TEXT NOT NULL,
     analysis_result JSONB NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
