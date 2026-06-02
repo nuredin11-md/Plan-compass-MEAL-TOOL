@@ -87,7 +87,13 @@ const DEFAULT_TREND_RECORDS = [
   { id: "rec30", year: "2026", quarter: "Q2", section: "IPC Practices", category: "Observed Ward metrics", value: 79, target: 90 }
 ];
 
-export default function AssessmentDashboard() {
+interface AssessmentDashboardProps {
+  assessmentHistory?: any[];
+  loadingHistory?: boolean;
+  onRefresh?: () => void;
+}
+
+export default function AssessmentDashboard({ assessmentHistory = [], loadingHistory, onRefresh }: AssessmentDashboardProps) {
   // Overrides list stored in localStorage
   const [overrides, setOverrides] = useState<any[]>(() => {
     try {
@@ -166,18 +172,19 @@ export default function AssessmentDashboard() {
 
   // Combined metrics mapper
   const combinedRecords = useMemo(() => {
+    const baseHistory = Array.isArray(assessmentHistory) ? assessmentHistory : [];
     // Start with history from Supabase (real data) when available
-    const historyRecords = (assessmentHistory || []).map((row: any, idx: number) => {
-      const facility = row.facilities || {};
+    const historyRecords = baseHistory.map((row: any, idx: number) => {
+      const facility = row?.facilities || {};
       const section = facility.name ? `Facility: ${facility.name}` : "Facility Audit";
-      const category = row.quarter ? `Assessment ${row.quarter}` : "Assessment Session";
+      const category = row?.quarter ? `Assessment ${row.quarter}` : "Assessment Session";
       return {
-        id: row.id || `hist_${idx}`,
-        year: String(new Date(row.assessment_date || Date.now()).getFullYear()),
-        quarter: row.quarter || "Q?",
+        id: row?.id || `hist_${idx}`,
+        year: String(new Date(row?.assessment_date || Date.now()).getFullYear()),
+        quarter: row?.quarter || "Q?",
         section,
         category,
-        value: typeof row.total_score === "number" ? row.total_score : 0,
+        value: typeof row?.total_score === "number" ? row.total_score : 0,
         target: globalTarget,
       };
     });
