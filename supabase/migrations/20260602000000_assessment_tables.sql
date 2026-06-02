@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS public.facilities (
 
 -- Assessment sessions (one record per checklist submission)
 CREATE TABLE IF NOT EXISTS public.assessments (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   facility_id UUID NOT NULL REFERENCES public.facilities(id),
   assessment_date DATE NOT NULL,
   quarter TEXT NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS public.assessments (
 -- Individual item responses per assessment
 CREATE TABLE IF NOT EXISTS public.responses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  assessment_id UUID NOT NULL REFERENCES public.assessments(id) ON DELETE CASCADE,
+  assessment_id TEXT NOT NULL REFERENCES public.assessments(id) ON DELETE CASCADE,
   item_id TEXT NOT NULL,
   score_achieved INTEGER NOT NULL DEFAULT 0,
   remarks TEXT DEFAULT '',
