@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import type { Indicator, MonthlyEntry } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
 import { useAppraisalCriteria, AppraisalCriterion } from "@/hooks/useAppraisalCriteria";
