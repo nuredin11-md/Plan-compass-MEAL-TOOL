@@ -400,15 +400,16 @@ export default function KPIRecordsPanel({
   return (
     <div id="kpi-records-panel" className="space-y-6">
       {!kpis || kpis.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <Inbox className="h-8 w-8 text-muted-foreground mb-3" />
-          <h3 className="text-sm font-semibold text-foreground">No KPI indicators loaded</h3>
-          <p className="text-xs text-muted-foreground max-w-sm mt-1">
-            KPI records will appear here once indicators are available from the database or local seed data.
-          </p>
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Inbox className="h-8 w-8 text-muted-foreground mb-3" />
+            <h3 className="text-sm font-semibold text-foreground">No KPI indicators loaded</h3>
+            <p className="text-xs text-muted-foreground max-w-sm mt-1">
+              KPI records will appear here once indicators are available from the database or local seed data.
+            </p>
+          </div>
         </div>
       ) : (
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-50 text-indigo-600 p-2.5 rounded-xl border border-indigo-100">
