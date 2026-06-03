@@ -38,14 +38,15 @@ export default function MonthlyDataTab({
   const { fetchHospitalPerformanceData } = useDatabase();
 
   const sourceIndicators = indicatorsProp || indicators;
-  const [selectedCode, setSelectedCode] = useState(sourceIndicators[0]?.code ?? "");
-  const [selectedMonth, setSelectedMonth] = useState(MONTHS[0]);
-  const [search, setSearch] = useState("");
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
-  const [lastSavedTime, setLastSavedTime] = useState<string>("");
-  const [isMarkedComplete, setIsMarkedComplete] = useState(false);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [completedEntries, setCompletedEntries] = useState<Set<string>>(new Set());
+const [selectedCode, setSelectedCode] = useState(sourceIndicators[0]?.code ?? "");
+   const [selectedMonth, setSelectedMonth] = useState(MONTHS[0]);
+   const [search, setSearch] = useState("");
+   const [filterProgramArea, setFilterProgramArea] = useState("all");
+   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
+   const [lastSavedTime, setLastSavedTime] = useState<string>("");
+   const [isMarkedComplete, setIsMarkedComplete] = useState(false);
+   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+   const [completedEntries, setCompletedEntries] = useState<Set<string>>(new Set());
 
   // 1. Find the master plan indicator details
   const currentIndicator = sourceIndicators.find((i) => i.code === selectedCode);
@@ -55,16 +56,22 @@ export default function MonthlyDataTab({
     (e) => e.code === selectedCode && e.month === selectedMonth
   );
 
-  const filteredIndicators = useMemo(() => {
-    if (!search) return sourceIndicators;
-    return sourceIndicators.filter(
-      (i) =>
-        i.code.toLowerCase().includes(search.toLowerCase()) ||
-        i.indicator.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [search, sourceIndicators]);
+const filteredIndicators = useMemo(() => {
+     return sourceIndicators.filter((ind) => {
+       const matchesSearch = !search ||
+         ind.code.toLowerCase().includes(search.toLowerCase()) ||
+         ind.indicator.toLowerCase().includes(search.toLowerCase());
+       const matchesProgramArea = filterProgramArea === "all" || ind.programArea === filterProgramArea;
+       return matchesSearch && matchesProgramArea;
+});
+   }, [search, sourceIndicators, filterProgramArea]);
 
-  // When indicators load, ensure a selected code exists
+   const uniqueProgramAreas = useMemo(
+     () => Array.from(new Set(sourceIndicators.map((i) => i.programArea))).sort(),
+     [sourceIndicators]
+   );
+
+   // When indicators load, ensure a selected code exists
   useEffect(() => {
     if (!selectedCode && sourceIndicators.length > 0) {
       setSelectedCode(sourceIndicators[0].code);
@@ -412,18 +419,32 @@ export default function MonthlyDataTab({
                 </p>
               </div>
 
-              {/* SELECT MASTER INDICATOR */}
-              <div className="space-y-1.5">
-                <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider animate-pulse">Select Master Indicator</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 z-10" />
-                  <Input
-                    placeholder="Filter indicators by search query..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-9 h-9 text-xs mb-2 border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 bg-slate-50/50 placeholder-slate-400"
-                  />
-                </div>
+{/* SELECT MASTER INDICATOR */}
+               <div className="space-y-1.5">
+                 <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider animate-pulse">Select Master Indicator</label>
+                 <div className="space-y-1">
+                   <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Filter by Department</label>
+                   <Select value={filterProgramArea} onValueChange={setFilterProgramArea}>
+                     <SelectTrigger className="h-9 text-xs border-slate-200 bg-white font-semibold">
+                       <SelectValue placeholder="All Departments" />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="all">All Departments</SelectItem>
+                       {uniqueProgramAreas.map((area) => (
+                         <SelectItem key={area} value={area}>{area}</SelectItem>
+                       ))}
+                     </SelectContent>
+                   </Select>
+                 </div>
+                 <div className="relative">
+                   <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 z-10" />
+                   <Input
+                     placeholder="Filter indicators by search query..."
+                     value={search}
+                     onChange={(e) => setSearch(e.target.value)}
+                     className="pl-9 h-9 text-xs mb-2 border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 bg-slate-50/50 placeholder-slate-400"
+                   />
+                 </div>
                 <Select value={selectedCode} onValueChange={setSelectedCode}>
                   <SelectTrigger className="h-10 text-xs border-slate-200 bg-white font-semibold">
                     <SelectValue placeholder="Select indicator" />
