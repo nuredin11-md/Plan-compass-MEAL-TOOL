@@ -9,7 +9,7 @@ export interface KPIDefinition {
 }
 
 export interface KPIRecord {
-  id: string; // unique ID
+  id?: string; // unique ID; may be undefined before DB upsert
   kpiId: number;
   month: string; // YYYY-MM
   actualValue: number;

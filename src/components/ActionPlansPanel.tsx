@@ -1,21 +1,36 @@
-import React, { useState, useMemo } from 'react';
-import { KPIDefinition, KPIRecord, ActionPlan } from '../types';
-import { formatPeriod } from '../data';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState } from "react";
 import { 
-  Sparkles, 
-  User, 
-  Clock, 
-  CheckCircle, 
-  HelpCircle, 
-  AlertCircle, 
-  Plus, 
-  Check, 
-  FileText,
-  AlertTriangle,
-  Loader2,
-  ListFilter
-} from 'lucide-react';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { 
+  Edit,
+  Trash2,
+  Save,
+  Plus,
+  Calendar,
+  ChevronDown,
+  RefreshCw,
+} from "lucide-react";
+import { KPIDefinition, KPIRecord, ActionPlan } from '../types';
+import { cn } from "@/lib/utils";
 
 interface ActionPlansPanelProps {
   kpis: KPIDefinition[];
@@ -24,514 +39,450 @@ interface ActionPlansPanelProps {
   initialSelectedKpiId: number | null;
   onSaveActionPlan: (plan: ActionPlan) => void;
   onDeleteActionPlan: (id: string) => void;
+  onReload?: () => void;
+  loading?: boolean;
 }
 
-export default function ActionPlansPanel({ 
-  kpis, 
-  records, 
-  actionPlans, 
+export default function ActionPlansPanel({
+  kpis,
+  records,
+  actionPlans,
   initialSelectedKpiId,
   onSaveActionPlan,
-  onDeleteActionPlan
+  onDeleteActionPlan,
+  onReload,
+  loading,
 }: ActionPlansPanelProps) {
-  
-  // Find all record GAPs across all months
-  const kpiGaps = useMemo(() => {
-    return records.filter(r => r.status === 'GAP').map(rec => {
-      const kpi = kpis.find(k => k.id === rec.kpiId);
-      const plan = actionPlans.find(p => p.kpiId === rec.kpiId && p.month === rec.month);
-      return {
-        rec,
-        kpi,
-        plan
-      };
-    }).filter(item => item.kpi !== undefined); // Ensure valid KPI data
-  }, [records, kpis, actionPlans]);
-
-  // Selected GAP from the list, default to the one navigated to if available, or first GAP
-  const [selectedKpiId, setSelectedKpiId] = useState<number | null>(() => {
-    if (initialSelectedKpiId !== null) return initialSelectedKpiId;
-    if (kpiGaps.length > 0) return kpiGaps[0].kpi?.id || null;
-    return null;
+  const [editingPlan, setEditingPlan] = useState<ActionPlan | null>(null);
+  const [formValues, setFormValues] = useState<ActionPlan>({
+    id: '',
+    kpiId: 0,
+    month: '',
+    gapDescription: '',
+    rootCause: '',
+    correctiveAction: '',
+    responsiblePerson: '',
+    deadline: '',
+    progress: 'Not started',
+    priority: 'Medium',
   });
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<'add' | 'edit'>('add');
 
-  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
-    if (initialSelectedKpiId !== null) {
-      const matchingGap = kpiGaps.find(g => g.kpi?.id === initialSelectedKpiId);
-      if (matchingGap) return matchingGap.rec.month;
+  // Filter action plans by selected KPI if provided
+  const filteredActionPlans = React.useMemo(() => {
+    if (initialSelectedKpiId === null) {
+      return actionPlans;
     }
-    if (kpiGaps.length > 0) return kpiGaps[0].rec.month;
-    return new Date().toISOString().slice(0, 7);
-  });
+    return actionPlans.filter(plan => plan.kpiId === initialSelectedKpiId);
+  }, [actionPlans, initialSelectedKpiId]);
 
-  // Filters
-  const [filterProgress, setFilterProgress] = useState<string>('All GAPs');
-
-  // Currently active GAP details
-  const activeGap = useMemo(() => {
-    return kpiGaps.find(g => g.kpi?.id === selectedKpiId && g.rec.month === selectedMonth);
-  }, [kpiGaps, selectedKpiId, selectedMonth]);
-
-  // Form states
-  const [rootCause, setRootCause] = useState('');
-  const [correctiveAction, setCorrectiveAction] = useState('');
-  const [responsiblePerson, setResponsiblePerson] = useState('');
-  const [deadline, setDeadline] = useState('');
-  const [progress, setProgress] = useState<'Not started' | 'In progress' | 'Completed'>('Not started');
-  const [priority, setPriority] = useState<'High' | 'Medium' | 'Low'>('Medium');
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [aiNote, setAiNote] = useState('');
-
-  // Handle GAP selection
-  const selectGap = (kpiId: number, month: string) => {
-    setSelectedKpiId(kpiId);
-    setSelectedMonth(month);
-    
-    // Load existing action plan if it exists
-    const plan = actionPlans.find(p => p.kpiId === kpiId && p.month === month);
-    if (plan) {
-      setRootCause(plan.rootCause);
-      setCorrectiveAction(plan.correctiveAction);
-      setResponsiblePerson(plan.responsiblePerson);
-      setDeadline(plan.deadline);
-      setProgress(plan.progress);
-      setPriority(plan.priority || 'Medium');
-    } else {
-      // Clear form for new plan
-      setRootCause('');
-      setCorrectiveAction('');
-      setResponsiblePerson('');
-      setDeadline('');
-      setProgress('Not started');
-      setPriority('Medium');
-    }
-    setAiNote('');
+  // Get KPI name by ID
+  const getKPIName = (kpiId: number): string => {
+    const kpi = kpis.find(k => k.id === kpiId);
+    return kpi ? kpi.name : 'Unknown KPI';
   };
 
-  // Initial form load on first selection or change of GAP
-  React.useEffect(() => {
-    if (activeGap) {
-      if (activeGap.plan) {
-        setRootCause(activeGap.plan.rootCause);
-        setCorrectiveAction(activeGap.plan.correctiveAction);
-        setResponsiblePerson(activeGap.plan.responsiblePerson);
-        setDeadline(activeGap.plan.deadline);
-        setProgress(activeGap.plan.progress);
-        setPriority(activeGap.plan.priority || 'Medium');
-      } else {
-        setRootCause('');
-        setCorrectiveAction('');
-        setResponsiblePerson('');
-        setDeadline('');
-        setProgress('Not started');
-        setPriority('Medium');
-      }
-      setAiNote('');
-    }
-  }, [selectedKpiId, selectedMonth]);
-
-  // Ask AI for clinical suggestions using the server-side proxy
-  const askAiCopilot = async () => {
-    if (!activeGap || !activeGap.kpi) return;
-    
-    setIsAiLoading(true);
-    setAiNote('');
-
-    try {
-      const gapDescription = `Actual performance on ${activeGap.kpi.name} is ${activeGap.rec.actualValue} vs. target threshold ${activeGap.kpi.target} (${activeGap.kpi.measure || 'units'}) during ${selectedMonth}. Difference is ${activeGap.rec.gap}.`;
-
-      const response = await fetch("/api/gemini/suggest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kpiName: activeGap.kpi.name,
-          gapDescription,
-          targetValue: activeGap.kpi.target,
-          actualValue: activeGap.rec.actualValue,
-          measure: activeGap.kpi.measure
-        })
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        setRootCause(data.rootCause || "Analysis missing");
-        setCorrectiveAction(data.correctiveAction || "Action items missing");
-        setResponsiblePerson(data.suggestedResponsible || "Coordinator");
-        setDeadline(data.suggestedDeadline || new Date().toISOString().slice(0, 10));
-        
-        if (data.note) {
-          setAiNote(data.note);
-        } else {
-          setAiNote("Successfully generated high-accuracy root causes and actions using Gemini 3.5 Copilot.");
-        }
-      } else {
-        alert(`Failed to retrieve AI suggestion: ${data.error || "Unknown response"}`);
-      }
-    } catch (e: any) {
-      console.error(e);
-      alert(`API network error requesting AI suggestions: ${e.message}`);
-    } finally {
-      setIsAiLoading(false);
-    }
+  // Handle form change
+  const handleFormChange = (field: keyof ActionPlan, value: any) => {
+    setFormValues((prev: ActionPlan) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
-  // Save changes
-  const handleSave = () => {
-    if (!activeGap || !activeGap.kpi) {
-      alert("Please select a valid GAP from the index first.");
+  // Handle saving the plan
+  const handleSavePlan = () => {
+    // Validate required fields
+    if (formValues.kpiId === 0 || !formValues.month || !formValues.gapDescription.trim()) {
+      alert('Please fill in all required fields');
       return;
     }
 
-    const gapDescription = `Actual performance on ${activeGap.kpi.name} is ${activeGap.rec.actualValue} vs. target ${activeGap.kpi.target} (${activeGap.kpi.measure || 'units'}) for ${selectedMonth}.`;
-
-    const plan: ActionPlan = {
-      id: activeGap.plan?.id || `plan_${selectedMonth}_${activeGap.kpi.id}`,
-      kpiId: activeGap.kpi.id,
-      month: selectedMonth,
-      gapDescription,
-      rootCause,
-      correctiveAction,
-      responsiblePerson,
-      deadline,
-      progress,
-      priority
+    const planToSave: ActionPlan = {
+      ...formValues,
+      id: formValues.id || `plan_${Date.now()}`,
     };
 
-    onSaveActionPlan(plan);
-    alert("Action Plan updated successfully.");
+    onSaveActionPlan(planToSave);
+    setIsDialogOpen(false);
+    // Reset form
+    setFormValues({
+      id: '',
+      kpiId: initialSelectedKpiId || 0,
+      month: '',
+      gapDescription: '',
+      rootCause: '',
+      correctiveAction: '',
+      responsiblePerson: '',
+      deadline: '',
+      progress: 'Not started',
+      priority: 'Medium',
+    });
+    if (onReload) onReload();
   };
 
-  // Filter GAPs list based on progress
-  const filteredGaps = useMemo(() => {
-    return kpiGaps.filter(g => {
-      if (filterProgress === 'All GAPs') return true;
-      if (filterProgress === 'No Action Plan') return !g.plan;
-      if (filterProgress === 'In progress') return g.plan && g.plan.progress === 'In progress';
-      if (filterProgress === 'Completed') return g.plan && g.plan.progress === 'Completed';
-      return true;
+  // Handle deleting a plan
+  const handleDeletePlan = (id: string) => {
+    if (window.confirm('Are you sure you want to delete this action plan?')) {
+      onDeleteActionPlan(id);
+      if (onReload) onReload();
+    }
+  };
+
+  // Handle editing a plan
+  const handleEditPlan = (plan: ActionPlan) => {
+    setEditingPlan(plan);
+    setFormValues({ ...plan });
+    setDialogMode('edit');
+    setIsDialogOpen(true);
+  };
+
+  // Handle adding a new plan
+  const handleAddPlan = () => {
+    setEditingPlan(null);
+    setFormValues({
+      id: '',
+      kpiId: initialSelectedKpiId || 0,
+      month: '',
+      gapDescription: '',
+      rootCause: '',
+      correctiveAction: '',
+      responsiblePerson: '',
+      deadline: '',
+      progress: 'Not started',
+      priority: 'Medium',
     });
-  }, [kpiGaps, filterProgress]);
+    setDialogMode('add');
+    setIsDialogOpen(true);
+  };
 
   return (
-    <div id="action-plans-panel" className="relative">
-      
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
-        {/* Left column: GAP Alert Sidebar Index (4 columns) */}
-        <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 bg-rose-50 text-rose-500 rounded-lg">
-                <AlertTriangle className="w-4 h-4 animate-bounce" />
-              </span>
-              <h3 className="font-bold font-display text-sm text-slate-800">Hospital Deficit Index</h3>
-            </div>
-            <span className="text-xs bg-slate-100 text-slate-600 font-mono font-bold px-2 py-0.5 rounded-full">
-              {kpiGaps.length} GAPs
-            </span>
-          </div>
-
-          {/* Quick status filter select */}
-          <div className="relative">
-            <ListFilter className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-            <select
-              value={filterProgress}
-              onChange={(e) => setFilterProgress(e.target.value)}
-              className="bg-slate-50 border border-slate-150 text-xs rounded-xl pl-9 pr-4 py-2 w-full focus:bg-white focus:ring-1 focus:ring-emerald-500"
-            >
-              <option value="All GAPs">Show All GAPs</option>
-              <option value="No Action Plan">Show Lacking Action Plan</option>
-              <option value="In progress">In Progress Resolutions</option>
-              <option value="Completed">Completed Resolutions</option>
-            </select>
-          </div>
-
-          <div className="divide-y divide-slate-100 overflow-y-auto max-h-[500px] pr-1 space-y-2 pt-1">
-            {filteredGaps.map(item => {
-              const rec = item.rec;
-              const kpi = item.kpi!;
-              const plan = item.plan;
-              
-              const isSelected = selectedKpiId === kpi.id && selectedMonth === rec.month;
-
-              return (
-                <button
-                  key={`${rec.month}_${kpi.id}`}
-                  onClick={() => selectGap(kpi.id, rec.month)}
-                  className={`w-full text-left p-3.5 rounded-xl transition-all border flex flex-col gap-1.5 focus:outline-none cursor-pointer mt-1 ${
-                    isSelected 
-                      ? 'bg-slate-950 text-white border-slate-900 shadow-md' 
-                      : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className={`text-[9px] font-bold uppercase tracking-wider ${isSelected ? 'text-emerald-400' : 'text-slate-400'}`}>
-                      Period: {formatPeriod(rec.month)}
-                    </span>
-                    
-                    <div className="flex items-center gap-1.5">
-                      {plan?.priority && (
-                        <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                          plan.priority === 'High' ? 'bg-red-500/20 text-red-500' :
-                          plan.priority === 'Medium' ? 'bg-amber-500/20 text-amber-500' : 'bg-emerald-500/20 text-emerald-500'
-                        }`}>
-                          {plan.priority}
-                        </span>
-                      )}
-                      {plan ? (
-                        <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                          plan.progress === 'Completed' ? 'bg-emerald-100 text-emerald-900' :
-                          plan.progress === 'In progress' ? 'bg-blue-100 text-blue-900' : 'bg-slate-200 text-slate-800'
-                        }`}>
-                          {plan.progress}
-                        </span>
-                      ) : (
-                        <span className="text-[8px] font-extrabold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-0.5">
-                          Lacking Plan
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <h4 className="font-bold text-xs truncate w-full" title={kpi.name}>
-                    {kpi.name}
-                  </h4>
-
-                  <div className="flex items-center justify-between w-full text-[10px] pt-1 border-t border-slate-100/10">
-                    <span className={isSelected ? 'text-slate-400' : 'text-slate-400'}>
-                      Actual: <span className="font-semibold">{rec.actualValue}</span>
-                    </span>
-                    <span className={`font-mono font-bold ${isSelected ? 'text-rose-400' : 'text-rose-600'}`}>
-                      Gap: {rec.gap > 0 ? `+${rec.gap}` : rec.gap}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-
-            {filteredGaps.length === 0 && (
-              <div className="py-12 text-center text-slate-400 space-y-2">
-                <CheckCircle className="w-10 h-10 text-emerald-400 mx-auto" />
-                <p className="text-xs font-semibold text-slate-600">No matching gaps found</p>
-                <p className="text-[11px]">All checked parameters are clean or actions match this filter query.</p>
-              </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Action Plans</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Track and manage corrective actions for KPI gaps
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            onClick={handleAddPlan} 
+            className="bg-blue-600 hover:bg-blue-700"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 2.126 2 5.64 2 10c0 3.312 2.69 6.164 6 7.527V12z"></path>
+                </svg>
+                Saving...
+              </>
+            ) : (
+              <>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Action Plan
+              </>
             )}
-          </div>
-        </div>
+          </Button>
 
-        {/* Right column: Action Plan Editor & AI Suggestion Copilot (8 columns) */}
-        <div className="lg:col-span-8 space-y-6">
-          
-          {activeGap ? (
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
-              
-              {/* Gap overview header */}
-              <div className="pb-4 border-b border-slate-100 flex flex-col md:flex-row md:items-start justify-between gap-4">
-                <div>
-                  <div className="text-xs text-rose-500 font-bold bg-rose-50 px-2 py-0.5 rounded-full inline-block uppercase tracking-wider mb-2">
-                    Period: {formatPeriod(selectedMonth)} Gap Alert
-                  </div>
-                  <h3 className="text-lg font-bold font-display text-slate-800">
-                    Resolution Plan: {activeGap.kpi?.name}
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Calculate Gap Value: <span className="font-mono font-bold text-rose-600">{activeGap.rec.gap}</span> (Score calculated as <span className="font-mono text-slate-600 font-semibold">{activeGap.rec.calculatedScore}%</span>)
-                  </p>
-                </div>
-
-                {/* Ask AI Copilot button - leverages our server side Gemini suggestor */}
-                <button
-                  onClick={askAiCopilot}
-                  disabled={isAiLoading}
-                  className="py-2.5 px-4.5 bg-gradient-to-r from-teal-600 to-indigo-600 hover:from-teal-700 hover:to-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-all self-start md:self-auto uppercase tracking-wide group"
-                >
-                  {isAiLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Synthesizing Actions...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 group-hover:scale-110 transition-transform" /> Ask Gemini AI Copilot
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* AI note / disclaimer block */}
-              {aiNote && (
-                <div className="p-3 bg-indigo-50/50 border border-indigo-100 text-[11px] text-indigo-800 rounded-xl flex items-start gap-2 animate-fadeIn">
-                  <Sparkles className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <div>
-                    {aiNote}
-                  </div>
-                </div>
+          {onReload && (
+            <Button 
+              onClick={onReload} 
+              variant="outline"
+              className="text-gray-600 hover:text-gray-700 hover:bg-gray-50"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 2.126 2 5.64 2 10c0 3.312 2.69 6.164 6 7.527V12z"></path>
+                  </svg>
+                </>
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
               )}
-
-              {/* Action Plan Form */}
-              <div className="space-y-4">
-                
-                {/* Automatically prebuilt GAP description */}
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Gap Indicator / Target Check</label>
-                  <p className="text-xs bg-slate-50 p-2.5 border border-slate-100 rounded-xl text-slate-600 font-medium">
-                    Actual score is <span className="font-bold text-slate-700 font-mono">{activeGap.rec.actualValue}</span> vs. target threshold of <span className="font-bold text-slate-700 font-mono">{activeGap.kpi?.target}</span> (Calculated score: <span className="font-mono text-indigo-600 font-bold">{activeGap.rec.calculatedScore}%</span>)
-                  </p>
-                </div>
-
-                {/* Root Cause Analysis area */}
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Root Cause Analysis (Why did this happen?)</label>
-                  <textarea
-                    rows={3}
-                    placeholder="Provide detailed clinical or administrative root cause analysis (e.g. staff ratios, document backlogs, drug pipeline stockouts)..."
-                    value={rootCause}
-                    onChange={(e) => setRootCause(e.target.value)}
-                    className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl p-3 text-sm focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-
-                {/* Corrective Action suggestions */}
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Proposed Corrective Action Plan</label>
-                  <textarea
-                    rows={4}
-                    placeholder="Outline step-by-step corrective resolutions with clear execution milestones..."
-                    value={correctiveAction}
-                    onChange={(e) => setCorrectiveAction(e.target.value)}
-                    className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl p-3 text-sm focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-
-                {/* Layout for Responsible Person and Deadline */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Designated Responsible Person/Role</label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="e.g. Emergency Dept Head"
-                        value={responsiblePerson}
-                        onChange={(e) => setResponsiblePerson(e.target.value)}
-                        className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Action Resolution Deadline</label>
-                    <div className="relative">
-                      <Clock className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                      <input
-                        type="date"
-                        value={deadline}
-                        onChange={(e) => setDeadline(e.target.value)}
-                        className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl pl-9 pr-4 py-2 text-xs font-bold focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Priority Selection */}
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Priority Tier</label>
-                  <div className="flex flex-wrap gap-3">
-                    {['High', 'Medium', 'Low'].map((p) => {
-                      const isSelected = priority === p;
-                      return (
-                        <button
-                          key={p}
-                          type="button"
-                          onClick={() => setPriority(p as any)}
-                          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border shrink-0 cursor-pointer ${
-                            isSelected 
-                              ? p === 'High' ? 'bg-red-500 text-white border-red-600 shadow-sm' :
-                                p === 'Medium' ? 'bg-amber-500 text-white border-amber-600 shadow-sm' :
-                                'bg-green-600 text-white border-green-700 shadow-sm'
-                              : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-150'
-                          }`}
-                        >
-                          {isSelected && '✦ '}
-                          {p}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Progress selectors */}
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Resolution Progress Status</label>
-                  <div className="flex flex-wrap gap-3">
-                    {['Not started', 'In progress', 'Completed'].map((prog) => {
-                      const isSelected = progress === prog;
-                      return (
-                        <button
-                          key={prog}
-                          onClick={() => setProgress(prog as any)}
-                          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border shrink-0 cursor-pointer ${
-                            isSelected 
-                              ? prog === 'Completed' ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm' :
-                                prog === 'In progress' ? 'bg-blue-600 text-white border-blue-700 shadow-sm' :
-                                'bg-slate-800 text-white border-slate-900 shadow-sm'
-                              : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-150'
-                          }`}
-                        >
-                          {prog === 'Completed' && isSelected && '✓ '}
-                          {prog}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Form Save Button actions */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                <div>
-                  {activeGap.plan ? (
-                    <button
-                      onClick={() => {
-                        if (window.confirm("Are you sure you want to delete this actions plan?")) {
-                          onDeleteActionPlan(activeGap.plan!.id);
-                          setRootCause('');
-                          setCorrectiveAction('');
-                          setResponsiblePerson('');
-                          setDeadline('');
-                          setProgress('Not started');
-                        }
-                      }}
-                      className="px-4 py-2 border border-rose-100 text-rose-600 bg-rose-50 hover:bg-rose-100 font-semibold text-xs rounded-xl transition-colors cursor-pointer"
-                    >
-                      Delete Resolution Plan
-                    </button>
-                  ) : null}
-                </div>
-
-                <button
-                  onClick={handleSave}
-                  className="px-6 py-2.5 bg-slate-950 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition-colors shadow-md cursor-pointer flex items-center gap-1"
-                >
-                  <Check className="w-4 h-4" /> Save Resolution Action Plan
-                </button>
-              </div>
-
-            </div>
-          ) : (
-            <div className="bg-white p-12 rounded-2xl border border-slate-100 shadow-sm text-center space-y-4">
-              <FileText className="w-12 h-12 text-slate-300 mx-auto" />
-              <h3 className="text-base font-bold text-slate-700">No performance GAPs selected</h3>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                First, select an indicator on the left side panel to view clinical root causes or build new corrective action plans.
-              </p>
-            </div>
+              Reload
+            </Button>
           )}
-
         </div>
-
       </div>
 
+      {/* Action Plans Table */}
+      <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+        {filteredActionPlans.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500">No action plans found</p>
+            {initialSelectedKpiId !== null && (
+               <p className="text-sm text-gray-400 mt-1">
+                 Add an action plan for the selected KPI to get started
+               </p>
+             )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50">
+                  <TableHead className="font-semibold">KPI</TableHead>
+                  <TableHead className="font-semibold">Month</TableHead>
+                  <TableHead className="font-semibold">Gap Description</TableHead>
+                  <TableHead className="font-semibold">Root Cause</TableHead>
+                  <TableHead className="font-semibold">Corrective Action</TableHead>
+                  <TableHead className="font-semibold">Responsible</TableHead>
+                  <TableHead className="font-semibold">Deadline</TableHead>
+                  <TableHead className="font-semibold">Progress</TableHead>
+                  <TableHead className="font-semibold">Priority</TableHead>
+                  <TableHead className="font-semibold text-center">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredActionPlans.map((plan) => (
+                  <TableRow key={plan.id} className="hover:bg-gray-50">
+                    <TableCell>
+                      {getKPIName(plan.kpiId)}
+                    </TableCell>
+                    <TableCell>
+                      {plan.month ? new Date(plan.month + "-01").toLocaleString('default', { month: 'short', year: 'numeric' }) : ''}
+                    </TableCell>
+                    <TableCell className="max-w-[200px] whitespace-normal">
+                      {plan.gapDescription}
+                    </TableCell>
+                    <TableCell className="max-w-[200px] whitespace-normal">
+                      {plan.rootCause}
+                    </TableCell>
+                    <TableCell className="max-w-[200px] whitespace-normal">
+                      {plan.correctiveAction}
+                    </TableCell>
+                    <TableCell>
+                      {plan.responsiblePerson}
+                    </TableCell>
+                    <TableCell>
+                      {plan.deadline ? new Date(plan.deadline).toLocaleDateString() : ''}
+                    </TableCell>
+                    <TableCell>
+                      <span className={cn(
+                        "px-2 py-1 rounded-full text-xs font-medium",
+                        plan.progress === 'Completed' ? 'bg-green-100 text-green-800' :
+                        plan.progress === 'In progress' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      )}>
+                        {plan.progress}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={cn(
+                        "px-2 py-1 rounded-full text-xs font-medium",
+                        plan.priority === 'High' ? 'bg-red-100 text-red-800' :
+                        plan.priority === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-green-100 text-green-800'
+                      )}>
+                        {plan.priority}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex gap-2 justify-center">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleEditPlan(plan)}
+                          className="h-8 w-8 p-0 text-blue-600"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeletePlan(plan.id)}
+                          className="h-8 w-8 p-0 text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="w-full max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {dialogMode === 'edit' ? 'Edit Action Plan' : 'Add New Action Plan'}
+            </DialogTitle>
+            <DialogDescription>
+              Fill in the details for the action plan
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 p-6">
+            {/* KPI Select */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                KPI
+              </label>
+              <Select 
+                value={formValues.kpiId.toString()} 
+                onValueChange={(value) => handleFormChange('kpiId', Number(value))}
+                disabled={initialSelectedKpiId !== null}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select KPI" />
+                </SelectTrigger>
+                <SelectContent>
+                  {kpis.map((kpi) => (
+                    <SelectItem key={kpi.id} value={kpi.id.toString()}>
+                      {kpi.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Month Input */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Month (YYYY-MM)
+              </label>
+              <Input
+                type="text"
+                placeholder="e.g., 2026-06"
+                value={formValues.month}
+                onChange={(e) => handleFormChange('month', e.target.value)}
+                className="w-48"
+              />
+            </div>
+
+            {/* Gap Description */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Gap Description *
+              </label>
+              <Textarea
+                value={formValues.gapDescription}
+                onChange={(e) => handleFormChange('gapDescription', e.target.value)}
+                placeholder="Describe the performance gap..."
+                className="min-h-[80px]"
+              />
+            </div>
+
+            {/* Root Cause */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Root Cause
+              </label>
+              <Textarea
+                value={formValues.rootCause}
+                onChange={(e) => handleFormChange('rootCause', e.target.value)}
+                placeholder="What is the root cause of the gap?"
+                className="min-h-[80px]"
+              />
+            </div>
+
+            {/* Corrective Action */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Corrective Action
+              </label>
+              <Textarea
+                value={formValues.correctiveAction}
+                onChange={(e) => handleFormChange('correctiveAction', e.target.value)}
+                placeholder="What corrective actions will be taken?"
+                className="min-h-[80px]"
+              />
+            </div>
+
+            {/* Responsible Person */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Responsible Person
+              </label>
+              <Input
+                value={formValues.responsiblePerson}
+                onChange={(e) => handleFormChange('responsiblePerson', e.target.value)}
+                placeholder="Person responsible for implementation"
+              />
+            </div>
+
+            {/* Deadline */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Deadline
+              </label>
+              <Input
+                type="date"
+                value={formValues.deadline ? formValues.deadline.split('T')[0] : ''}
+                onChange={(e) => handleFormChange('deadline', e.target.value)}
+                className="w-48"
+              />
+            </div>
+
+            {/* Progress */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Progress
+              </label>
+              <Select 
+                value={formValues.progress} 
+                onValueChange={value => handleFormChange('progress', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select progress" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Not started">Not started</SelectItem>
+                  <SelectItem value="In progress">In progress</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Priority */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Priority
+              </label>
+              <Select 
+                value={formValues.priority || 'Medium'} 
+                onValueChange={value => handleFormChange('priority', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="High">High</SelectItem>
+                  <SelectItem value="Medium">Medium</SelectItem>
+                  <SelectItem value="Low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsDialogOpen(false)}
+              className="w-24"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSavePlan}
+              className="w-24"
+              disabled={loading}
+            >
+              {loading ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
