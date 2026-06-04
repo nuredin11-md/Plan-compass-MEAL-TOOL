@@ -171,7 +171,7 @@ export async function fetchHospitalPerformanceRows(filters?: {
   fiscal_year?: string;
   metric_type?: string;
 }): Promise<HospitalPlanPerformance[]> {
-  let query = supabase.from("hospital_plan_and_performance").select("*");
+  let query = supabase.from("hospital_plan_and_performance" as any).select("*");
   if (filters?.category) query = query.eq("category", filters.category);
   if (filters?.fiscal_year) {
     const normalized = normalizeEFYString(filters.fiscal_year);
@@ -205,7 +205,7 @@ export async function upsertHospitalPlanRow(payload: HospitalPlanPerformanceInse
 
 export async function deleteHospitalPlanRow(fiscal_year: string, indicator_name: string) {
   const { error } = await supabase
-    .from("hospital_plan_and_performance")
+    .from("hospital_plan_and_performance" as any)
     .delete()
     .eq("fiscal_year", fiscal_year)
     .eq("indicator_name", indicator_name)
@@ -214,29 +214,46 @@ export async function deleteHospitalPlanRow(fiscal_year: string, indicator_name:
   return true;
 }
 
-/**
- * Updates the cumulative performance for an indicator in a specific fiscal year
- * by summing up its monthly entries. This prevents the "overwrite" issue where
- * only the last month's data was being reflected in the Master Plan.
- */
 export async function updateCumulativePerformance(
   indicatorCode: string,
   indicatorName: string,
   programArea: string,
   fiscalYear: string,
-  monthlyEntries: { code: string; actual: number | null }[]
 ) {
-  const cumulativeTotal = monthlyEntries
-    .filter(e => e.code === indicatorCode)
-    .reduce((sum, e) => sum + (e.actual || 0), 0);
+  const yearMatch = fiscalYear.match(/(\d{4})/);
+  const numericYear = yearMatch ? parseInt(yearMatch[1]) : 2018;
 
-  return await (upsertHospitalPlanRow as any)({
+  console.log(`[CumulativeUpdate] Fetching all monthly entries for ${indicatorCode} in ${numericYear}`);
+
+  // Fetch all months for this indicator from the source-of-truth table
+  const { data: entries, error: fetchError } = await supabase
+    .from("monthly_entries" as any)
+    .select("value")
+    .eq("year", numericYear)
+    .eq("indicator_code", indicatorCode);
+
+  if (fetchError) {
+    console.error("[CumulativeUpdate] Failed to fetch monthly source data:", fetchError);
+    throw fetchError;
+  }
+
+  const cumulativeTotal = (entries || []).reduce((sum, e: any) => sum + (Number(e.value) || 0), 0);
+
+  console.log(`[CumulativeUpdate] Calculated Total: ${cumulativeTotal}`);
+
+  const payload = {
     indicator_name: indicatorName,
     fiscal_year: fiscalYear,
     metric_type: "Performance",
     metric_value: cumulativeTotal,
+    percentage_value: null,
     category: programArea,
     status: "Active",
-    remark: `Aggregated cumulative performance as of Ginbot/Sene 2018 EFY`
- } as any);
+    remark: `Aggregated cumulative performance as of Ginbot/Sene 2018 EFY`,
+    created_at: new Date().toISOString()
+  };
+
+  console.log(`[CumulativeUpdate] Upserting payload:`, payload);
+
+  return await (upsertHospitalPlanRow as any)(payload as any);
 }

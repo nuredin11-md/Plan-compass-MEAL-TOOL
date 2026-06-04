@@ -133,8 +133,7 @@ const filteredIndicators = useMemo(() => {
             selectedCode,
             currentIndicator?.indicator || "",
             currentIndicator?.programArea || "General",
-            selectedEFY,
-            monthlyData
+            selectedEFY
           );
 
           AuditLogger.logAction("system", "DATA_AUTO_SAVED", "monthly_data", "success", {
@@ -152,9 +151,16 @@ const filteredIndicators = useMemo(() => {
         setLastSavedTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
         toast.success("Data saved", { duration: 2000 });
       } catch (error) {
+        const err = error as any;
+        const isNetworkError = err.message?.includes("Failed to fetch") || !navigator.onLine;
+        const errorType = isNetworkError ? "Network Error" : "Database Error";
+        const displayMessage = isNetworkError 
+          ? "Could not reach server. Changes are cached locally." 
+          : `[${err.code || 'Sync'}] ${err.message || 'Operation failed'}`;
+
         setSaveStatus("error");
-        if (import.meta.env.DEV) console.error("Save error:", error);
-        toast.error("Failed to save data");
+        if (import.meta.env.DEV) console.error(`[Auto-Save] ${errorType}:`, err);
+        toast.error(`${errorType}: ${displayMessage}`);
         AuditLogger.logSecurityEvent("system", "AUTO_SAVE_FAILED", String(error) || "unknown_error");
       }
     }, 2000); // 2 second debounce
@@ -625,8 +631,7 @@ const filteredIndicators = useMemo(() => {
                             selectedCode,
                             currentIndicator?.indicator || "",
                             currentIndicator?.programArea || "General",
-                            selectedEFY,
-                            monthlyData
+                            selectedEFY
                           );
                         }
 
@@ -641,9 +646,16 @@ const filteredIndicators = useMemo(() => {
                           timestamp: new Date().toISOString(),
                         });
                       } catch (error) {
+                        const err = error as any;
+                        const isNetworkError = err.message?.includes("Failed to fetch") || !navigator.onLine;
+                        const errorType = isNetworkError ? "Network Error" : "Database Submission Error";
+                        const displayMessage = isNetworkError 
+                          ? "No internet connection detected. Please try again later." 
+                          : `[${err.code || 'DB'}] ${err.message || 'Manual submission failed'}`;
+
                         setSaveStatus("error");
-                        if (import.meta.env.DEV) console.error("Manual save error:", error);
-                        toast.error("Failed to save data");
+                        if (import.meta.env.DEV) console.error(`[Manual-Save] ${errorType}:`, err);
+                        toast.error(`${errorType}: ${displayMessage}`);
                         AuditLogger.logSecurityEvent("system", "MANUAL_SAVE_FAILED", String(error) || "unknown_error");
                       }
                     }}

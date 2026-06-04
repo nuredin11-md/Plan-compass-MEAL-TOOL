@@ -50,10 +50,10 @@ export interface HospitalPlanPerformance {
   metric_type: string;
   metric_value: number | null;
   percentage_value: number | null;
-  status: string;
+  status: string | null;
   remark: string | null;
-  created_at: string;
-  updated_at?: string;
+  created_at: string | null;
+  updated_at?: string | null;
 }
 
 // Ethiopian months to convert correctly
@@ -209,6 +209,7 @@ export function useDatabase() {
             action: "update",
             data: offlineData,
             timestamp: Date.now(),
+            retries: 0,
           });
           saveToLocalStorage(`pending_sync_${year}_${month}_${indicator_code}`, true);
           return offlineData;
@@ -216,20 +217,21 @@ export function useDatabase() {
 
         // If online, sync to database
         const { data, error: upsertError } = await supabase
-          .from("monthly_entries")
-          .upsert([monthlyDataPayload], {
+          .from("monthly_entries" as any)
+          .upsert([monthlyDataPayload] as any, {
             onConflict: "year,month,indicator_code",
           })
           .select()
           .single();
 
-        if (upsertError) throw upsertError;
+        if (upsertError) {
+          console.error("[useDatabase] upsertMonthlyData error:", upsertError);
+          throw upsertError;
+        }
         return data;
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to save monthly data";
-        setError(message);
-        if (import.meta.env.DEV) console.error("Error upserting monthly data:", err);
-        return null;
+        if (import.meta.env.DEV) console.error("[useDatabase] Fatal error upserting monthly data:", err);
+        throw err;
       }
     },
     []
@@ -251,7 +253,7 @@ export function useDatabase() {
       try {
         setError(null);
         const { data, error: upsertError } = await supabase
-          .from("annual_plans")
+          .from("annual_plans" as any)
           .upsert(
             {
               year,
@@ -264,7 +266,7 @@ export function useDatabase() {
               target,
               created_by: userId,
               updated_at: new Date().toISOString(),
-            },
+            } as any,
             {
               onConflict: "year,indicator_code",
             }

@@ -129,7 +129,7 @@ export async function upsertHospitalPlanRow(
     category,
     indicator_name: indicatorName,
     fiscal_year: fiscalYear,
-    metric_type: "Actual",
+    metric_type: "Performance",
     metric_value: value,
     percentage_value: target > 0 ? (value / target) * 100 : 0,
     status: "Active",
@@ -137,8 +137,8 @@ export async function upsertHospitalPlanRow(
   };
 
   const { data, error } = await supabase
-    .from("hospital_plan_and_performance")
-    .upsert(payload, { onConflict: "indicator_name,fiscal_year,metric_type" })
+    .from("hospital_plan_and_performance" as any)
+    .upsert([payload] as any, { onConflict: "indicator_name,fiscal_year,metric_type" })
     .select()
     .single();
 
