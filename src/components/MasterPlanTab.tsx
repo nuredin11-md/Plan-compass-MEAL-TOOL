@@ -64,33 +64,25 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
   const [dbPerformanceRows, setDbPerformanceRows] = useState<any[]>([]);
   const [loadingDb, setLoadingDb] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      setLoadingDb(true);
-      try {
-        console.log(`[MasterPlanTab] Fetching hospital performance data for year: ${selectedYear}`);
-        const data = await fetchHospitalPerformanceData();
-        if (active) {
-          console.log(`[MasterPlanTab] Received ${data?.length || 0} performance rows from Supabase`);
-          if (data && data.length > 0) {
-            console.log("[MasterPlanTab] Sample data:", data.slice(0, 2));
-          } else {
-            console.warn("[MasterPlanTab] No data returned from fetchHospitalPerformanceData");
-          }
-          setDbPerformanceRows(data);
-        }
-      } catch (err) {
-        console.error("[MasterPlanTab] Failed to load performance rows:", err);
-        toast.error("Failed to load hospital plan data from database");
-      } finally {
-        if (active) setLoadingDb(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
+  const loadData = useCallback(async (isManual = false) => {
+    setLoadingDb(true);
+    try {
+      console.log(`[MasterPlanTab] Fetching hospital performance data for year: ${selectedYear}`);
+      const data = await fetchHospitalPerformanceData();
+      console.log(`[MasterPlanTab] Received ${data?.length || 0} performance rows from Supabase`);
+      setDbPerformanceRows(data || []);
+      if (isManual) toast.success("Data refreshed from Supabase");
+    } catch (err) {
+      console.error("[MasterPlanTab] Failed to load performance rows:", err);
+      toast.error("Failed to load hospital plan data from database");
+    } finally {
+      setLoadingDb(false);
+    }
   }, [fetchHospitalPerformanceData, selectedYear]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Dialog State
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -172,7 +164,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       );
       const target = planRow && planRow.metric_value != null ? Number(planRow.metric_value) : ind.target;
 
-      // 2. Dynamic Baseline (baseline for each EFY is last year's performance)
+      // 2. Dynamic Baseline (baseline for current EFY is last year's performance)
       const prevPerformanceRow = dbPerformanceRows.find(
         (r) => matchRow(r) && r.fiscal_year === prevEfyLabel && r.metric_type === "Performance"
       ) ?? dbPerformanceRows.find(
@@ -184,11 +176,9 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       );
       const baseline = hasPrevMonthlyEntries
         ? prevMonthlyActualSum
-        : (prevMonthlyActualSum > 0
-            ? prevMonthlyActualSum
-            : (prevPerformanceRow && prevPerformanceRow.metric_value != null ? Number(prevPerformanceRow.metric_value) : ind.baseline));
+        : (prevPerformanceRow && prevPerformanceRow.metric_value != null ? Number(prevPerformanceRow.metric_value) : ind.baseline);
 
-      // 3. Dynamic Achievement / Actual of this year (sum can change through monthly data entry)
+      // 3. Dynamic Achievement / Actual for this year (sum can change through monthly data entry)
       const actualFromMonthly = calculatePerformanceActual(ind.code, monthlyData);
       const currentPerformanceRow = dbPerformanceRows.find(
         (r) => matchRow(r) && r.fiscal_year === currentEfyLabel && r.metric_type === "Performance"
@@ -200,9 +190,7 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
       );
       const actual = hasMonthlyEntries
         ? actualFromMonthly
-        : (actualFromMonthly > 0
-            ? actualFromMonthly
-            : (currentPerformanceRow && currentPerformanceRow.metric_value != null ? Number(currentPerformanceRow.metric_value) : 0));
+        : (currentPerformanceRow && currentPerformanceRow.metric_value != null ? Number(currentPerformanceRow.metric_value) : 0);
 
       const percent = target > 0 ? Math.round((actual / target) * 100) : 0;
 
@@ -479,6 +467,10 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
               </div>
 
               <div className="flex gap-1.5 shrink-0">
+                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => loadData(true)} disabled={loadingDb}>
+                  <RefreshCw className={cn("h-3.5 w-3.5", loadingDb && "animate-spin")} />
+                  {loadingDb ? "Refreshing..." : "Refresh Data"}
+                </Button>
                 <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleExportCSV}>
                   <Download className="h-3.5 w-3.5" />Export
                 </Button>

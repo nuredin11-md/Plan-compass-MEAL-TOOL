@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { InputValidator, AuditLogger, DataValidator } from "@/lib/securityUtils";
 import { useAuth } from "@/hooks/useAuth";
 import { useDatabase } from "@/hooks/useDatabase";
-import { mapToIndicators } from "../../hospitalDataSync";
+import { updateCumulativePerformance } from "@/lib/hospitalPerformanceIntegration";
 
 interface Props {
   monthlyData: MonthlyEntry[];
@@ -47,6 +47,17 @@ const [selectedCode, setSelectedCode] = useState(sourceIndicators[0]?.code ?? ""
    const [isMarkedComplete, setIsMarkedComplete] = useState(false);
    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
    const [completedEntries, setCompletedEntries] = useState<Set<string>>(new Set());
+
+  const isRestricted = useMemo(() => {
+    const cleanMonth = selectedMonth.trim().split(" ")[0];
+    // Only Ginbot and Sene 2018 EFY are active for data entry as per MEAL requirements
+    if (selectedEFY === "2018 EFY") {
+      const activeMonths = ["Ginbot", "Sene"];
+      return !activeMonths.includes(cleanMonth);
+    }
+    // Previous EFY years (2017, 2016) are historical and locked to prevent destructive overwrites
+    return true; 
+  }, [selectedEFY, selectedMonth]);
 
   // 1. Find the master plan indicator details
   const currentIndicator = sourceIndicators.find((i) => i.code === selectedCode);
@@ -116,6 +127,14 @@ const filteredIndicators = useMemo(() => {
             actual,
             remarks,
             user?.id || null
+          );
+
+          await updateCumulativePerformance(
+            selectedCode,
+            currentIndicator?.indicator || "",
+            currentIndicator?.programArea || "General",
+            selectedEFY,
+            monthlyData
           );
 
           AuditLogger.logAction("system", "DATA_AUTO_SAVED", "monthly_data", "success", {
@@ -325,11 +344,11 @@ const filteredIndicators = useMemo(() => {
               <span>Active Security Context</span>
             </div>
             <p className="text-sm font-semibold text-white">
-              Currently restricted as: <span className="underline decoration-indigo-500 text-indigo-300">{(profile.role || "staff").replace("_", " ")}</span> 
+              Currently restricted as: <span className="underline decoration-indigo-500 text-indigo-300">{((profile as any)?.role || "staff").replace("_", " ")}</span> 
               {profile.department !== "All" && ` within ${profile.department}`}
             </p>
             <p className="text-[10px] text-slate-400 leading-snug">
-              {profile.role === "admin" 
+              {(profile as any)?.role === "admin" 
                 ? "Full permissions enabled. You can post data for any indicator." 
                 : `You can only report entries representing details for ${profile.department}.`}
             </p>
@@ -523,14 +542,16 @@ const filteredIndicators = useMemo(() => {
                     <button
                       type="button"
                       onClick={setExplicitZero}
-                      className="text-[10px] text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200/40 px-2 py-0.5 rounded transition-all font-semibold cursor-pointer"
+                      disabled={isRestricted}
+                      className={`text-[10px] text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200/40 px-2 py-0.5 rounded transition-all font-semibold ${isRestricted ? "opacity-50 cursor-not-allowed grayscale" : "cursor-pointer"}`}
                     >
                       Explicit Zero
                     </button>
                     <button
                       type="button"
                       onClick={handleClearEntry}
-                      className="text-[10px] text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200/80 px-2 py-0.5 rounded transition-all font-semibold cursor-pointer"
+                      disabled={isRestricted}
+                      className={`text-[10px] text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200/80 px-2 py-0.5 rounded transition-all font-semibold ${isRestricted ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                     >
                       Clear/Blank
                     </button>
@@ -540,9 +561,10 @@ const filteredIndicators = useMemo(() => {
                 <Input
                   id="actual-val"
                   type="number"
-                  placeholder="Leave completely empty if no data recorded"
+                  placeholder={isRestricted ? "Historical data entry is restricted" : "Leave completely empty if no data recorded"}
                   value={currentEntry?.actual ?? ""}
                   onChange={(e) => handleUpdate("actual", e.target.value)}
+                  disabled={isRestricted}
                   className="w-full h-11 px-3 border border-slate-200 rounded-lg text-lg font-mono font-bold bg-white focus:border-indigo-500 focus:ring-indigo-500 text-slate-800"
                   min="0"
                 />
@@ -557,9 +579,10 @@ const filteredIndicators = useMemo(() => {
                   Remarks / Qualitative Comments (Anomalies / Roadblocks)
                 </label>
                 <textarea
-                  placeholder="e.g. Explaining reasons for underperformance, medication shortages, community outreach progress, or facility challenges..."
+                  placeholder={isRestricted ? "Historical remarks cannot be modified" : "e.g. Explaining reasons for underperformance..."}
                   value={currentEntry?.remarks ?? ""}
                   onChange={(e) => handleUpdate("remarks", e.target.value)}
+                  disabled={isRestricted}
                   className="w-full text-xs p-3 border border-slate-200 rounded-lg bg-white/70 focus:border-indigo-500 focus:ring-indigo-500 focus:bg-white transition-all text-slate-700 placeholder-slate-400"
                   rows={3}
                 />
@@ -597,6 +620,14 @@ const filteredIndicators = useMemo(() => {
                             remarks,
                             user?.id || null
                           );
+
+                          await updateCumulativePerformance(
+                            selectedCode,
+                            currentIndicator?.indicator || "",
+                            currentIndicator?.programArea || "General",
+                            selectedEFY,
+                            monthlyData
+                          );
                         }
 
                         setSaveStatus("saved");
@@ -616,7 +647,8 @@ const filteredIndicators = useMemo(() => {
                         AuditLogger.logSecurityEvent("system", "MANUAL_SAVE_FAILED", String(error) || "unknown_error");
                       }
                     }}
-                    className="h-10 px-5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                    disabled={isRestricted || saveStatus === "saving"}
+                    className={`h-10 px-5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all ${isRestricted ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                   >
                     <Save className="h-3.5 w-3.5" />
                     <span>Submit & Log Record</span>

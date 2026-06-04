@@ -192,8 +192,8 @@ export async function fetchHospitalPerformanceRows(filters?: {
 
 export async function upsertHospitalPlanRow(payload: HospitalPlanPerformanceInsert) {
   const { data, error } = await supabase
-    .from("hospital_plan_and_performance")
-    .upsert([payload], { onConflict: "indicator_name,fiscal_year,metric_type" })
+    .from("hospital_plan_and_performance" as any)
+    .upsert([payload] as any, { onConflict: "indicator_name,fiscal_year,metric_type" })
     .select()
     .single();
   if (error) throw error;
@@ -212,4 +212,31 @@ export async function deleteHospitalPlanRow(fiscal_year: string, indicator_name:
     .eq("metric_type", "Plan");
   if (error) throw error;
   return true;
+}
+
+/**
+ * Updates the cumulative performance for an indicator in a specific fiscal year
+ * by summing up its monthly entries. This prevents the "overwrite" issue where
+ * only the last month's data was being reflected in the Master Plan.
+ */
+export async function updateCumulativePerformance(
+  indicatorCode: string,
+  indicatorName: string,
+  programArea: string,
+  fiscalYear: string,
+  monthlyEntries: { code: string; actual: number | null }[]
+) {
+  const cumulativeTotal = monthlyEntries
+    .filter(e => e.code === indicatorCode)
+    .reduce((sum, e) => sum + (e.actual || 0), 0);
+
+  return await (upsertHospitalPlanRow as any)({
+    indicator_name: indicatorName,
+    fiscal_year: fiscalYear,
+    metric_type: "Performance",
+    metric_value: cumulativeTotal,
+    category: programArea,
+    status: "Active",
+    remark: `Aggregated cumulative performance as of Ginbot/Sene 2018 EFY`
+ } as any);
 }
