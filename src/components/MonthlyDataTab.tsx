@@ -37,8 +37,16 @@ export default function MonthlyDataTab({
   const { indicators } = useIndicators();
   const { fetchHospitalPerformanceData } = useDatabase();
 
-  const sourceIndicators = indicatorsProp || indicators;
-const [selectedCode, setSelectedCode] = useState(sourceIndicators[0]?.code ?? "");
+  const sourceIndicators = useMemo(() => {
+    const baseIndicators = indicatorsProp || indicators;
+    // If admin or department is "All", show everything. Otherwise restrict to assigned department.
+    if (!profile?.department || profile.department === "All" || (profile as any)?.role === "admin") {
+      return baseIndicators;
+    }
+    return baseIndicators.filter(ind => ind.programArea === profile.department);
+  }, [indicatorsProp, indicators, profile]);
+
+   const [selectedCode, setSelectedCode] = useState("");
    const [selectedMonth, setSelectedMonth] = useState(MONTHS[0]);
    const [search, setSearch] = useState("");
    const [filterProgramArea, setFilterProgramArea] = useState("all");
@@ -126,7 +134,8 @@ const filteredIndicators = useMemo(() => {
             selectedCode,
             actual,
             remarks,
-            user?.id || null
+            user?.id || null,
+            profile?.department
           );
 
           await updateCumulativePerformance(
@@ -624,7 +633,8 @@ const filteredIndicators = useMemo(() => {
                             selectedCode,
                             actual,
                             remarks,
-                            user?.id || null
+                            user?.id || null,
+                            profile?.department
                           );
 
                           await updateCumulativePerformance(

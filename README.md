@@ -1,4 +1,8 @@
-# 🧭 Plan Compass
+# <img src="public/Plan compass.png" width="32" height="32" align="center"> Plan Compass
+
+<p align="center">
+  <img src="public/Plan compass.png" width="160" alt="Plan Compass Logo">
+</p>
 
 A comprehensive health performance planning and monitoring application designed to track hospital and health facility indicators against strategic plans. Plan Compass provides real-time dashboards, data visualization, and performance analytics to support evidence-based decision-making in healthcare systems.
 

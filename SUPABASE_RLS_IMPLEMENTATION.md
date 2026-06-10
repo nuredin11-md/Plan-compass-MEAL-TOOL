@@ -54,8 +54,8 @@ DROP POLICY IF EXISTS "Admins can see all data" ON monthly_data;
 CREATE POLICY "Users can only access their department data" ON monthly_data
   FOR SELECT
   USING (
-    department = (
-      SELECT department 
+    department::text = (
+      SELECT department::text 
       FROM profiles 
       WHERE id = auth.uid()
       LIMIT 1
@@ -77,8 +77,8 @@ CREATE POLICY "Users can only access their department data" ON monthly_data
 CREATE POLICY "Users can only insert data for their department" ON monthly_data
   FOR INSERT
   WITH CHECK (
-    department = (
-      SELECT department 
+    department::text = (
+      SELECT department::text 
       FROM profiles 
       WHERE id = auth.uid()
       LIMIT 1
@@ -100,8 +100,8 @@ CREATE POLICY "Users can only insert data for their department" ON monthly_data
 CREATE POLICY "Users can only update their department data" ON monthly_data
   FOR UPDATE
   USING (
-    department = (
-      SELECT department 
+    department::text = (
+      SELECT department::text 
       FROM profiles 
       WHERE id = auth.uid()
       LIMIT 1
@@ -115,8 +115,8 @@ CREATE POLICY "Users can only update their department data" ON monthly_data
     )
   )
   WITH CHECK (
-    department = (
-      SELECT department 
+    department::text = (
+      SELECT department::text 
       FROM profiles 
       WHERE id = auth.uid()
       LIMIT 1
@@ -164,8 +164,8 @@ DROP POLICY IF EXISTS "Users can only view their department imports" ON data_imp
 CREATE POLICY "Users can only import for their department" ON data_imports
   FOR INSERT
   WITH CHECK (
-    department = (
-      SELECT department 
+    department::text = (
+      SELECT department::text 
       FROM profiles 
       WHERE id = auth.uid()
       LIMIT 1
@@ -186,8 +186,8 @@ CREATE POLICY "Users can only import for their department" ON data_imports
 CREATE POLICY "Users can only view their department imports" ON data_imports
   FOR SELECT
   USING (
-    department = (
-      SELECT department 
+    department::text = (
+      SELECT department::text 
       FROM profiles 
       WHERE id = auth.uid()
       LIMIT 1

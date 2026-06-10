@@ -461,11 +461,14 @@ export default function RecognitionBoard({
     <div id="recognition-board-container" className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold tracking-tight text-slate-900">Hospital Recognition Board</h2>
-          <p className="text-xs text-slate-500 font-medium">
-            Active Block: <strong className="text-amber-600 font-bold uppercase">{selectedEFY}</strong>
-          </p>
+        <div className="flex items-center gap-3">
+          <img src="/Plan compass.png" alt="Plan Compass Logo" className="h-10 w-10 object-contain rounded-lg shadow-sm" />
+          <div>
+            <h2 className="text-lg font-bold tracking-tight text-slate-900">Hospital Recognition Board</h2>
+            <p className="text-xs text-slate-500 font-medium">
+              Active Block: <strong className="text-amber-600 font-bold uppercase">{selectedEFY}</strong>
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {activeCriteria.map((c, i) => (

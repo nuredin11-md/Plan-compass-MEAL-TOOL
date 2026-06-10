@@ -153,8 +153,9 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
         return slugified === ind.code || row.indicator_name === ind.indicator;
       };
 
-      const currentEfyLabel = `${selectedYear} EFY`;
-      const prevEfyLabel = `${selectedYear - 1} EFY`;
+      const currentEfyLabel = selectedEFY;
+      const prevYearNum = parseInt(selectedEFY.split(" ")[0]) - 1;
+      const prevEfyLabel = `${prevYearNum} EFY`;
 
       // 1. Dynamic Plan/Target for the selected year
       const planRow = dbPerformanceRows.find(
@@ -370,11 +371,14 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
     <div className="space-y-6 flex flex-col h-full w-full">
       {/* Sub-tab selection bar */}
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-slate-900 text-white p-4 border border-slate-800 rounded-2xl shadow-lg">
-        <div>
-          <h2 className="text-sm font-extrabold tracking-tight text-white uppercase">Clinical Master Plan Workspace</h2>
-          <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-            Manage clinical targets, record Monthly Entries, or trigger a DHIS2 Import feed
-          </p>
+        <div className="flex items-center gap-3">
+          <img src="/Plan compass.png" alt="Plan Compass Logo" className="h-10 w-10 object-contain rounded-lg" />
+          <div>
+            <h2 className="text-sm font-extrabold tracking-tight text-white uppercase">Clinical Master Plan Workspace</h2>
+            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+              Manage clinical targets, record Monthly Entries, or trigger a DHIS2 Import feed
+            </p>
+          </div>
         </div>
 
         {/* Sub-tab togglers list */}
@@ -424,6 +428,14 @@ export default function MasterPlanTab({ monthlyData, selectedYear, previousYearD
         {activeSubTab === "plan-grid" ? (
           <div className={cn("flex flex-col gap-4", isFullscreen && "fixed inset-0 z-50 bg-background p-4 overflow-hidden")}>
             
+            {/* ── KPI Stats Cards ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <KpiCard icon={<ClipboardList className="h-5 w-5 text-blue-600" />} label="Total Indicators" value={stats.total} accent="#2563eb" />
+              <KpiCard icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />} label="On Track" value={stats.onTrack} sub={`${stats.total > 0 ? Math.round((stats.onTrack / stats.total) * 100) : 0}%`} accent="#059669" />
+              <KpiCard icon={<AlertTriangle className="h-5 w-5 text-amber-600" />} label="At Risk" value={stats.atRisk} sub={`${stats.total > 0 ? Math.round((stats.atRisk / stats.total) * 100) : 0}%`} accent="#d97706" />
+              <KpiCard icon={<XCircle className="h-5 w-5 text-red-600" />} label="Off Track" value={stats.offTrack} sub={`${stats.total > 0 ? Math.round((stats.offTrack / stats.total) * 100) : 0}%`} accent="#dc2626" />
+            </div>
+
             {/* ── Toolbar ── */}
             <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between">
               <div className="flex flex-wrap gap-2 flex-1 min-w-0">

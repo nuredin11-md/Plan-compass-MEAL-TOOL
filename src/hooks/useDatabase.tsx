@@ -176,7 +176,8 @@ export function useDatabase() {
       indicator_code: string,
       actual: number,
       remarks: string,
-      userId: string | null
+      userId: string | null,
+      department?: string | null
     ): Promise<MonthlyData | null> => {
       try {
         setError(null);
@@ -190,6 +191,7 @@ export function useDatabase() {
           value: actual,
           remark: remarks,
           reported_by: userId,
+          department: department,
           updated_at: now,
         };
 
