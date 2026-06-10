@@ -96,41 +96,64 @@ const TrendBadge = ({ trend }: { trend: "up" | "down" | "stable" }) =>
                      <span className="flex items-center gap-0.5 text-[10px] text-slate-400"><Minus className="h-3 w-3" /></span>;
 
 // ── Criterion Editor Modal ────────────────────────────────────────────────────
-
+ 
 type DraftCriterion = Omit<AppraisalCriterion, "id"> & { id?: string };
-
+ 
 const CriterionModal = ({
-  initial, efy, onSave, onClose,
-}: {
-  initial: DraftCriterion | null;
-  efy: string;
-  onSave: (c: DraftCriterion) => void;
-  onClose: () => void;
-}) => {
-  const isNew = !initial?.id;
-  const [d, setD] = useState<DraftCriterion>(
-    initial ?? {
-      name: "", efy, weight: 10, departmentCategories: DEPARTMENTS,
-      linkedIndicatorCodes: [], dataSource: "manual", subMetrics: [],
-      icon: "activity", color: "#4f46e5", description: "", isActive: true,
-    }
-  );
-
-  const addSM = () =>
-    setD(p => ({ ...p, subMetrics: [...p.subMetrics, { id: `sm_${Date.now()}`, label: "", weight: 33, hint: "" }] }));
-
-  const removeSM = (id: string) =>
-    setD(p => ({ ...p, subMetrics: p.subMetrics.filter(s => s.id !== id) }));
-
-  const updateSM = (id: string, field: keyof SubMetric, value: string | number) =>
-    setD(p => ({ ...p, subMetrics: p.subMetrics.map(s => s.id === id ? { ...s, [field]: value } : s) }));
-
-  const handleSave = () => {
-    if (!d.name.trim()) { toast.error("Name is required"); return; }
-    if (d.weight < 1 || d.weight > 100) { toast.error("Weight must be 1–100"); return; }
-    if (d.dataSource === "manual" && d.subMetrics.length === 0) { toast.error("Add at least one sub-metric"); return; }
-    onSave(d);
-  };
+   initial, efy, onSave, onClose, allIndicators,
+ }: {
+   initial: DraftCriterion | null;
+   efy: string;
+   onSave: (c: DraftCriterion) => void;
+   onClose: () => void;
+   allIndicators: Indicator[];
+ }) => {
+   const isNew = !initial?.id;
+   const [d, setD] = useState<DraftCriterion>(
+     initial ?? {
+       name: "", efy, weight: 10, departmentCategories: DEPARTMENTS,
+       linkedIndicatorCodes: [], dataSource: "manual", subMetrics: [],
+       icon: "activity", color: "#4f46e4", description: "", isActive: true,
+     }
+   );
+ 
+   const addSM = () =>
+     setD(p => ({ ...p, subMetrics: [...p.subMetrics, { id: `sm_${Date.now()}`, label: "", weight: 33, hint: "" }] }));
+ 
+   const removeSM = (id: string) =>
+     setD(p => ({ ...p, subMetrics: p.subMetrics.filter(s => s.id !== id) }));
+ 
+   const updateSM = (id: string, field: keyof SubMetric, value: string | number) =>
+     setD(p => ({ ...p, subMetrics: p.subMetrics.map(s => s.id === id ? { ...s, [field]: value } : s) }));
+ 
+   // Indicator selection for auto data source
+   const [indicatorSearch, setIndicatorSearch] = useState("");
+   const [showIndicatorPicker, setShowIndicatorPicker] = useState(false);
+ 
+   const availableIndicators = allIndicators.filter(ind =>
+     ind.indicator.toLowerCase().includes(indicatorSearch.toLowerCase()) ||
+     ind.code.toLowerCase().includes(indicatorSearch.toLowerCase()) ||
+     ind.programArea.toLowerCase().includes(indicatorSearch.toLowerCase())
+   );
+ 
+   const toggleIndicator = (code: string) => {
+     setD(prev => {
+       const codes = prev.linkedIndicatorCodes;
+       return {
+         ...prev,
+         linkedIndicatorCodes: codes.includes(code)
+           ? codes.filter(c => c !== code)
+           : [...codes, code]
+       };
+     });
+   };
+ 
+   const handleSave = () => {
+     if (!d.name.trim()) { toast.error("Name is required"); return; }
+     if (d.weight < 1 || d.weight > 100) { toast.error("Weight must be 1–100"); return; }
+     if (d.dataSource === "manual" && d.subMetrics.length === 0) { toast.error("Add at least one sub-metric"); return; }
+     onSave(d);
+   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -179,7 +202,7 @@ const CriterionModal = ({
             </div>
           </div>
 
-          {/* Color */}
+{/* Color */}
           <div>
             <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Color</label>
             <div className="flex gap-2 flex-wrap">
@@ -190,7 +213,62 @@ const CriterionModal = ({
               ))}
             </div>
           </div>
-
+ 
+          {/* Indicator Picker for Auto data source */}
+          {d.dataSource === "auto" && (
+            <div className="border-t pt-4 mt-2">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Linked Indicators ({d.linkedIndicatorCodes.length})
+                </label>
+                <button onClick={() => setShowIndicatorPicker(true)}
+                  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800">
+                  Edit Selection
+                </button>
+              </div>
+              {d.linkedIndicatorCodes.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {d.linkedIndicatorCodes.slice(0, 3).map(code => {
+                    const ind = allIndicators.find(i => i.code === code);
+                    return (
+                      <span key={code} className="text-[10px] px-1.5 py-0.5 bg-indigo-50 rounded-md text-indigo-700">
+                        {ind?.indicator ?? code}
+                      </span>
+                    );
+                  })}
+                  {d.linkedIndicatorCodes.length > 3 && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 rounded-md">
+                      +{d.linkedIndicatorCodes.length - 3} more
+                    </span>
+                  )}
+                </div>
+              )}
+              {!d.linkedIndicatorCodes.length && (
+                <p className="text-[10px] text-slate-400 italic">No indicators selected. Click "Edit Selection".</p>
+              )}
+              {showIndicatorPicker && (
+                <div className="mt-3 p-3 border rounded-xl max-h-64 overflow-y-auto">
+                  <input type="text" placeholder="Search indicators..." value={indicatorSearch}
+                    onChange={e => setIndicatorSearch(e.target.value)}
+                    className="w-full px-2 py-1 mb-2 border rounded text-xs" />
+                  <div className="space-y-1">
+                    {availableIndicators.map(ind => (
+                      <label key={ind.code} className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={d.linkedIndicatorCodes.includes(ind.code)}
+                          onChange={() => toggleIndicator(ind.code)} />
+                        <span className="truncate">{ind.programArea} – {ind.indicator}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-2 pt-2 border-t">
+                    <button onClick={() => setShowIndicatorPicker(false)}
+                      className="text-xs text-indigo-600 font-bold">Done</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+ 
           {/* Sub-metrics */}
           {d.dataSource === "manual" && (
             <div>
@@ -578,22 +656,25 @@ export default function RecognitionBoard({
     return DEPARTMENTS.map((deptName, idx) => {
       let totalWeightedScore = 0;
 
-      const criterionScores = activeCriteria.map(crit => {
-        let score = 0;
-
-        if (crit.dataSource === "auto") {
-          const deptInds = indicators.filter(ind => ind.programArea === deptName);
-          let totalAch = 0, count = 0;
-          deptInds.forEach(ind => {
-            const periodData = monthlyData.filter(e => e.code === ind.code && months.includes(e.month));
-            const actual = periodData.reduce((s, e) => s + (e.actual ?? 0), 0);
-            const targetScaled = (ind.target / 12) * months.length;
-            const ratio = targetScaled > 0 ? actual / targetScaled : 0;
-            totalAch += Math.min(1, ratio) * 100;
-            count++;
-          });
-          score = count > 0 ? Math.round(totalAch / count) : 0;
-        } else {
+const criterionScores = activeCriteria.map(crit => {
+         let score = 0;
+ 
+         if (crit.dataSource === "auto") {
+           // Use linked indicators if specified, otherwise fallback to department filter
+           const linkedInds = crit.linkedIndicatorCodes.length > 0
+             ? indicators.filter(ind => crit.linkedIndicatorCodes.includes(ind.code))
+             : indicators.filter(ind => crit.departmentCategories.includes(ind.programArea));
+           let totalAch = 0, count = 0;
+           linkedInds.forEach(ind => {
+             const periodData = monthlyData.filter(e => e.code === ind.code && months.includes(e.month));
+             const actual = periodData.reduce((s, e) => s + (e.actual ?? 0), 0);
+             const targetScaled = (ind.target / 12) * months.length;
+             const ratio = targetScaled > 0 ? actual / targetScaled : 0;
+             totalAch += Math.min(1, ratio) * 100;
+             count++;
+           });
+           score = count > 0 ? Math.round(totalAch / count) : 0;
+         } else {
           const subWeightSum = crit.subMetrics.reduce((s, sm) => s + sm.weight, 0);
           if (subWeightSum > 0) {
             const weighted = crit.subMetrics.reduce((sum, sm) => {
@@ -945,15 +1026,16 @@ export default function RecognitionBoard({
         </TabsContent>
       </Tabs>
 
-      {/* ── Criterion Modal ───────────────────────────────────────────── */}
-      {modalCrit !== null && (
-        <CriterionModal
-          initial={modalCrit === "new" ? null : { ...modalCrit }}
-          efy={selectedEFY}
-          onSave={handleSaveCrit}
-          onClose={() => setModalCrit(null)}
-        />
-      )}
+{/* ── Criterion Modal ───────────────────────────────────────────── */}
+       {modalCrit !== null && (
+         <CriterionModal
+           initial={modalCrit === "new" ? null : { ...modalCrit }}
+           efy={selectedEFY}
+           allIndicators={indicators}
+           onSave={handleSaveCrit}
+           onClose={() => setModalCrit(null)}
+         />
+       )}
     </div>
   );
 }
