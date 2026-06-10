@@ -1,160 +1,422 @@
 import { useState, useMemo, useEffect } from "react";
 import {
   Trophy, Medal, Star, Award, TrendingUp, TrendingDown, Minus,
-  CheckCircle2, Settings2, ChevronRight, BarChart3, CalendarDays, Plus, Trash2
+  CheckCircle2, Settings2, ChevronRight, BarChart3, CalendarDays,
+  Plus, Trash2, Edit2, X, Save, ClipboardList, Shield, FileText,
+  Activity, ChevronDown, Info, AlertCircle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Indicator, MonthlyEntry } from "@/data/hospitalIndicators";
 import { useIndicators } from "@/context/IndicatorsContext";
-import { useAppraisalCriteria, AppraisalCriterion } from "@/hooks/useAppraisalCriteria";
- 
+import {
+  useAppraisalCriteria,
+  AppraisalCriterion,
+  SubMetric,
+} from "@/hooks/useAppraisalCriteria";
+
 // ── Types ─────────────────────────────────────────────────────────────────────
- 
+
 interface DeptScore {
   name: string;
-  score: number;
+  totalScore: number;
   rank: number;
-  prevRank?: number;
-  indicators: string[];
-  reports: {
-    label: string;
-    weight: number;
-    score: number;
-    indicatorsList: string[];
-  }[];
-  badge: "gold" | "silver" | "bronze" | "none";
+  criterionScores: { id: string; name: string; weight: number; score: number; color: string }[];
   trend: "up" | "down" | "stable";
+  badge: "gold" | "silver" | "bronze" | "none";
+  indicatorCount: number;
 }
 
-interface CustomCriteria {
-  id: string;
-  name: string;
-  efy: string;
-  weight: number;
-  departmentCategories: string[];
-  linkedIndicatorCodes: string[];
-}
- 
-const MEDAL_CONFIG = {
-  gold:   { icon: Trophy, label: "Gold Winner",  bg: "from-yellow-50 to-amber-50",  border: "border-yellow-300", text: "text-yellow-700", accent: "#d97706" },
-  silver: { icon: Medal,  label: "Silver Award", bg: "from-slate-50 to-gray-50",    border: "border-slate-300",  text: "text-slate-600",  accent: "#64748b" },
-  bronze: { icon: Star,   label: "Bronze Award", bg: "from-orange-50 to-amber-50",  border: "border-orange-300", text: "text-orange-600", accent: "#c2410c" },
-  none:   { icon: Award,  label: "Recognized",   bg: "from-blue-50 to-indigo-50",   border: "border-blue-200",   text: "text-blue-600",   accent: "#3b82f6" },
-};
- 
-// Departments
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const DEPARTMENTS = [
-  "Maternal & Child Health",
-  "Child Health",
-  "EPI",
-  "Surgical Services",
-  "Hospital Utilization",
-  "Quality & Safety",
-  "Pharmacy",
-  "Blood Bank",
-  "Tuberculosis",
-  "HIV Prevention and Control",
-  "Non-Communicable Diseases",
-  "Nutrition",
+  "Maternal & Child Health", "Child Health", "EPI",
+  "Surgical Services", "Hospital Utilization", "Quality & Safety",
+  "Pharmacy", "Blood Bank", "Tuberculosis",
+  "HIV Prevention and Control", "Non-Communicable Diseases", "Nutrition",
 ];
 
-const CRIT_COLORS = ["#0ea5e9", "#8b5cf6", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#14b8a6"];
-
-// Period Mappings
-const PERIOD_MAP = {
+const PERIOD_MAP: Record<string, Record<string, string[]>> = {
   annual: {
     "Annual Summary": [
       "Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)", "Tikimt (Feb)",
       "Hidar (Mar)", "Tahsas (Apr)", "Tir (May)", "Yekatit (Jun)",
-      "Megabit (Jul)", "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)"
-    ]
+      "Megabit (Jul)", "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)",
+    ],
   },
   "six-month": {
-    "1st Half-Year (H1)": [
-      "Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)", "Tikimt (Feb)",
-      "Hidar (Mar)", "Tahsas (Apr)"
-    ],
-    "2nd Half-Year (H2)": [
-      "Tir (May)", "Yekatit (Jun)", "Megabit (Jul)", "Miyazia (Aug)",
-      "Ginbot (Sep)", "Sene (Oct)"
-    ]
+    "1st Half-Year (H1)": ["Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)", "Tikimt (Feb)", "Hidar (Mar)", "Tahsas (Apr)"],
+    "2nd Half-Year (H2)": ["Tir (May)", "Yekatit (Jun)", "Megabit (Jul)", "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)"],
   },
   quarterly: {
     "1st Quarter (Q1)": ["Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)"],
     "2nd Quarter (Q2)": ["Tikimt (Feb)", "Hidar (Mar)", "Tahsas (Apr)"],
     "3rd Quarter (Q3)": ["Tir (May)", "Yekatit (Jun)", "Megabit (Jul)"],
-    "4th Quarter (Q4)": ["Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)"]
+    "4th Quarter (Q4)": ["Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)"],
+  },
+};
+
+const EFY_OPTIONS = [
+  { value: "2016 EFY", label: "2016 EFY (Baseline)" },
+  { value: "2017 EFY", label: "2017 EFY (Intermediate)" },
+  { value: "2018 EFY", label: "2018 EFY (Active)" },
+  { value: "2019 EFY", label: "2019 EFY (Plan)" },
+];
+
+const MEDAL_CFG = {
+  gold:   { Icon: Trophy, label: "Gold Winner",  bg: "from-yellow-50 to-amber-50",  border: "border-yellow-300", text: "text-yellow-700", accent: "#d97706", podiumH: "h-20", podiumBg: "bg-amber-200/60",  podiumNum: "text-3xl text-amber-600" },
+  silver: { Icon: Medal,  label: "Silver Award", bg: "from-slate-50 to-gray-100",   border: "border-slate-300",  text: "text-slate-600",  accent: "#64748b", podiumH: "h-12", podiumBg: "bg-slate-200/80",  podiumNum: "text-2xl text-slate-400" },
+  bronze: { Icon: Star,   label: "Bronze Award", bg: "from-orange-50 to-amber-50",  border: "border-orange-300", text: "text-orange-600", accent: "#c2410c", podiumH: "h-8",  podiumBg: "bg-amber-100/40",  podiumNum: "text-xl text-orange-600" },
+  none:   { Icon: Award,  label: "Recognized",   bg: "from-blue-50 to-indigo-50",   border: "border-blue-200",   text: "text-blue-600",   accent: "#3b82f6", podiumH: "h-8",  podiumBg: "bg-blue-100/40",   podiumNum: "text-xl text-blue-600"  },
+};
+
+const CRIT_ICONS: Record<string, React.ElementType> = {
+  activity: Activity, shield: Shield, clipboard: ClipboardList, file: FileText,
+};
+
+const COLOR_SWATCHES = ["#4f46e5", "#059669", "#7c3aed", "#d97706", "#dc2626", "#0891b2", "#c026d3", "#65a30d"];
+
+// ── Small helpers ─────────────────────────────────────────────────────────────
+
+const makePeriodKey = (efy: string, interval: string, period: string) =>
+  `${efy}__${interval}__${period}`;
+
+const ScoreBar = ({ score, color, h = "h-1.5" }: { score: number; color: string; h?: string }) => (
+  <div className={`w-full ${h} rounded-full bg-slate-100 overflow-hidden`}>
+    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(0, score))}%`, background: color }} />
+  </div>
+);
+
+const TrendBadge = ({ trend }: { trend: "up" | "down" | "stable" }) =>
+  trend === "up"   ? <span className="flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600"><TrendingUp className="h-3 w-3" /></span> :
+  trend === "down" ? <span className="flex items-center gap-0.5 text-[10px] font-semibold text-red-500"><TrendingDown className="h-3 w-3" /></span> :
+                     <span className="flex items-center gap-0.5 text-[10px] text-slate-400"><Minus className="h-3 w-3" /></span>;
+
+// ── Criterion Editor Modal ────────────────────────────────────────────────────
+
+type DraftCriterion = Omit<AppraisalCriterion, "id"> & { id?: string };
+
+const CriterionModal = ({
+  initial, efy, onSave, onClose,
+}: {
+  initial: DraftCriterion | null;
+  efy: string;
+  onSave: (c: DraftCriterion) => void;
+  onClose: () => void;
+}) => {
+  const isNew = !initial?.id;
+  const [d, setD] = useState<DraftCriterion>(
+    initial ?? {
+      name: "", efy, weight: 10, departmentCategories: DEPARTMENTS,
+      linkedIndicatorCodes: [], dataSource: "manual", subMetrics: [],
+      icon: "activity", color: "#4f46e5", description: "", isActive: true,
+    }
+  );
+
+  const addSM = () =>
+    setD(p => ({ ...p, subMetrics: [...p.subMetrics, { id: `sm_${Date.now()}`, label: "", weight: 33, hint: "" }] }));
+
+  const removeSM = (id: string) =>
+    setD(p => ({ ...p, subMetrics: p.subMetrics.filter(s => s.id !== id) }));
+
+  const updateSM = (id: string, field: keyof SubMetric, value: string | number) =>
+    setD(p => ({ ...p, subMetrics: p.subMetrics.map(s => s.id === id ? { ...s, [field]: value } : s) }));
+
+  const handleSave = () => {
+    if (!d.name.trim()) { toast.error("Name is required"); return; }
+    if (d.weight < 1 || d.weight > 100) { toast.error("Weight must be 1–100"); return; }
+    if (d.dataSource === "manual" && d.subMetrics.length === 0) { toast.error("Add at least one sub-metric"); return; }
+    onSave(d);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b shrink-0">
+          <h3 className="text-sm font-bold text-slate-900">{isNew ? "Add New Criterion" : `Edit: ${d.name}`}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+            <X className="h-4 w-4 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-4 overflow-y-auto flex-1">
+          {/* Name */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Criterion Name *</label>
+            <input value={d.name} onChange={e => setD(p => ({ ...p, name: e.target.value }))}
+              placeholder="e.g., Safe Motherhood Score"
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Description</label>
+            <textarea value={d.description} onChange={e => setD(p => ({ ...p, description: e.target.value }))}
+              rows={2} placeholder="Describe what this criterion evaluates..."
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none" />
+          </div>
+
+          {/* Weight + Source */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Weight (%)</label>
+              <input type="number" min={1} max={100} value={d.weight}
+                onChange={e => setD(p => ({ ...p, weight: parseInt(e.target.value) || 0 }))}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Data Source</label>
+              <select value={d.dataSource} onChange={e => setD(p => ({ ...p, dataSource: e.target.value as "auto" | "manual" }))}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                <option value="auto">🔄 Auto (Master Plan)</option>
+                <option value="manual">✍️ Manual Entry</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Color */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Color</label>
+            <div className="flex gap-2 flex-wrap">
+              {COLOR_SWATCHES.map(c => (
+                <button key={c} onClick={() => setD(p => ({ ...p, color: c }))}
+                  className={cn("w-7 h-7 rounded-lg border-2 transition-all", d.color === c ? "border-slate-900 scale-110" : "border-transparent")}
+                  style={{ background: c }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Sub-metrics */}
+          {d.dataSource === "manual" && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Sub-Metrics</label>
+                <button onClick={addSM}
+                  className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded-lg hover:bg-indigo-50 transition-colors">
+                  <Plus className="h-3 w-3" /> Add
+                </button>
+              </div>
+              <div className="space-y-2.5 max-h-52 overflow-y-auto pr-1">
+                {d.subMetrics.length === 0 && (
+                  <p className="text-xs text-slate-400 italic text-center py-4 border border-dashed rounded-xl">
+                    Add at least one sub-metric
+                  </p>
+                )}
+                {d.subMetrics.map((sm, idx) => (
+                  <div key={sm.id} className="border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50/50">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-slate-400 w-4 shrink-0">{idx + 1}.</span>
+                      <input value={sm.label} onChange={e => updateSM(sm.id, "label", e.target.value)}
+                        placeholder="Sub-metric label"
+                        className="flex-1 px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                      <div className="flex items-center gap-1 shrink-0">
+                        <input type="number" value={sm.weight} onChange={e => updateSM(sm.id, "weight", parseInt(e.target.value) || 0)}
+                          className="w-14 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                        <span className="text-[10px] text-slate-400">%</span>
+                      </div>
+                      <button onClick={() => removeSM(sm.id)} className="p-1 text-red-400 hover:text-red-600 rounded shrink-0">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <input value={sm.hint ?? ""} onChange={e => updateSM(sm.id, "hint", e.target.value)}
+                      placeholder="Hint / description (optional)"
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-[11px] text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-2 p-5 border-t bg-slate-50/50 shrink-0">
+          <Button onClick={handleSave} className="flex-1 text-sm font-bold gap-2">
+            <Save className="h-4 w-4" />
+            {isNew ? "Add Criterion" : "Save Changes"}
+          </Button>
+          <Button variant="outline" onClick={onClose} className="text-sm">Cancel</Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Manual Entry Panel ────────────────────────────────────────────────────────
+
+const ManualEntryPanel = ({
+  criteria,
+  periodKey,
+  getScore,
+  onScoreChange,
+}: {
+  criteria: AppraisalCriterion[];
+  periodKey: string;
+  getScore: (dept: string, critId: string, smId: string, pKey: string) => number;
+  onScoreChange: (dept: string, critId: string, smId: string, score: number) => void;
+}) => {
+  const manualCriteria = criteria.filter(c => c.dataSource === "manual");
+  const [selectedDept, setSelectedDept] = useState(DEPARTMENTS[0]);
+  const [activeCritId, setActiveCritId] = useState(manualCriteria[0]?.id ?? "");
+
+  // Keep activeCritId valid when criteria list changes
+  useEffect(() => {
+    if (manualCriteria.length > 0 && !manualCriteria.find(c => c.id === activeCritId)) {
+      setActiveCritId(manualCriteria[0].id);
+    }
+  }, [manualCriteria, activeCritId]);
+
+  const activeCrit = manualCriteria.find(c => c.id === activeCritId);
+
+  if (manualCriteria.length === 0) {
+    return (
+      <div className="text-center py-8 text-sm text-slate-400 italic">
+        No manual criteria defined. All criteria use auto-calculation.
+      </div>
+    );
   }
+
+  return (
+    <div className="space-y-4">
+      {/* Department selector */}
+      <div>
+        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Select Department</p>
+        <div className="flex flex-wrap gap-1.5">
+          {DEPARTMENTS.map(d => (
+            <button key={d} onClick={() => setSelectedDept(d)}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-[11px] font-semibold border transition-all",
+                selectedDept === d
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-700"
+              )}>
+              {d}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Criterion tabs */}
+      <div className="border rounded-2xl overflow-hidden bg-white">
+        <div className="flex border-b bg-slate-50/50 overflow-x-auto">
+          {manualCriteria.map(c => {
+            const CIcon = CRIT_ICONS[c.icon] ?? Activity;
+            const isActive = activeCritId === c.id;
+            return (
+              <button key={c.id} onClick={() => setActiveCritId(c.id)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-3 text-xs font-bold transition-all whitespace-nowrap border-b-2",
+                  isActive ? "border-b-2" : "border-transparent text-slate-500 hover:bg-slate-100"
+                )}
+                style={isActive ? { borderBottomColor: c.color, background: c.color + "15", color: c.color } : {}}>
+                <CIcon className="h-3.5 w-3.5" />
+                {c.name}
+                <span className="opacity-60 font-mono ml-0.5">{c.weight}%</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {activeCrit && (
+          <div className="p-4 space-y-4">
+            <div className="flex items-start gap-2 bg-slate-50 rounded-xl p-3 border border-slate-100">
+              <Info className="h-3.5 w-3.5 text-slate-400 mt-0.5 shrink-0" />
+              <p className="text-[11px] text-slate-500">{activeCrit.description}</p>
+            </div>
+
+            <div className="space-y-3">
+              {activeCrit.subMetrics.map(sm => {
+                const score = getScore(selectedDept, activeCrit.id, sm.id, periodKey);
+                return (
+                  <div key={sm.id} className="border border-slate-100 rounded-xl p-3 hover:border-slate-200 transition-colors">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-slate-800">{sm.label}</p>
+                        {sm.hint && <p className="text-[10px] text-slate-400 mt-0.5">{sm.hint}</p>}
+                        <p className="text-[10px] text-slate-400 mt-0.5">Weight: <span className="font-bold">{sm.weight}%</span> within criterion</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <input type="number" min={0} max={100} value={score}
+                          onChange={e => onScoreChange(selectedDept, activeCrit.id, sm.id, parseInt(e.target.value) || 0)}
+                          className="w-20 px-3 py-2 border rounded-xl text-sm font-mono font-bold text-center focus:outline-none focus:ring-2 focus:border-transparent"
+                          style={{ borderColor: activeCrit.color + "60", color: activeCrit.color } as React.CSSProperties} />
+                        <span className="text-xs text-slate-400 font-bold">/ 100</span>
+                      </div>
+                    </div>
+                    <ScoreBar score={score} color={activeCrit.color} h="h-2" />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Composite score for this dept × criterion */}
+            {(() => {
+              const subWeightSum = activeCrit.subMetrics.reduce((s, sm) => s + sm.weight, 0);
+              const composite = subWeightSum > 0
+                ? Math.round(
+                    activeCrit.subMetrics.reduce((sum, sm) => {
+                      return sum + getScore(selectedDept, activeCrit.id, sm.id, periodKey) * sm.weight;
+                    }, 0) / subWeightSum
+                  )
+                : 0;
+              return (
+                <div className="flex items-center justify-between p-3 rounded-xl border-2"
+                  style={{ borderColor: activeCrit.color + "40", background: activeCrit.color + "08" }}>
+                  <span className="text-xs font-bold text-slate-600">
+                    Composite — {selectedDept}
+                  </span>
+                  <span className="text-lg font-black tabular-nums" style={{ color: activeCrit.color }}>
+                    {composite}%
+                  </span>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
- 
-// Sub-components ────────────────────────────────────────────────────────────
- 
-const TrendBadge = ({ trend }: { trend: "up" | "down" | "stable" }) => {
-  if (trend === "up")
-    return <span className="flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600"><TrendingUp className="h-3 w-3" />↑</span>;
-  if (trend === "down")
-    return <span className="flex items-center gap-0.5 text-[10px] font-semibold text-red-500"><TrendingDown className="h-3 w-3" />↓</span>;
-  return <span className="flex items-center gap-0.5 text-[10px] text-slate-500"><Minus className="h-3 w-3" />—</span>;
-};
- 
-const RankDelta = ({ current, prev }: { current: number; prev?: number }) => {
-  if (prev === undefined) return null;
-  const delta = prev - current;
-  if (delta === 0) return <span className="text-[9px] text-slate-500">=</span>;
-  if (delta > 0) return <span className="text-[9px] font-bold text-emerald-600">▲{delta}</span>;
-  return <span className="text-[9px] font-bold text-red-500">▼{Math.abs(delta)}</span>;
-};
- 
-// Podium Card ───────────────────────────────────────────────────────────────
- 
+
+// ── Podium Card ───────────────────────────────────────────────────────────────
+
 const PodiumCard = ({
   dept, rank, expanded, onToggle,
 }: {
   dept: DeptScore; rank: 1 | 2 | 3;
   expanded: boolean; onToggle: () => void;
 }) => {
-  const badge = rank === 1 ? "gold" : rank === 2 ? "silver" : "bronze";
-  const cfg = MEDAL_CONFIG[badge];
-  const Icon = cfg.icon;
-  const isFirst = rank === 1;
- 
+  const badge = (["gold", "silver", "bronze"] as const)[rank - 1];
+  const cfg = MEDAL_CFG[badge];
+  const { Icon } = cfg;
+
   return (
-    <button onClick={onToggle} className={cn("relative flex flex-col items-center w-full text-left transition-all duration-300", isFirst ? "scale-105 z-10" : "")}>
+    <button onClick={onToggle} className={cn("relative flex flex-col items-center w-full text-left transition-all duration-300", rank === 1 ? "scale-105 z-10" : "")}>
       <div className="relative z-10 p-2.5 rounded-full shadow-sm border" style={{ background: cfg.accent + "15", borderColor: cfg.accent + "40" }}>
         <Icon className="w-7 h-7" style={{ color: cfg.accent }} />
       </div>
-      <div className={cn("w-full mt-2 rounded-xl border-2 p-4 transition-all", `bg-gradient-to-b ${cfg.bg}`, cfg.border, isFirst ? "pb-6" : "")}
+      <div className={cn("w-full mt-2 rounded-xl border-2 p-4 transition-all", `bg-gradient-to-b ${cfg.bg}`, cfg.border, rank === 1 ? "pb-6" : "")}
         style={expanded ? { outline: `2px solid ${cfg.accent}`, outlineOffset: "2px" } : {}}>
         <div className="text-center">
-          <span className="text-2xl font-black tabular-nums" style={{ color: cfg.accent }}>{dept.score}%</span>
-          <div className="flex items-center justify-center gap-1.5 mt-1">
-            <TrendBadge trend={dept.trend} />
-            <RankDelta current={rank} prev={dept.prevRank} />
-          </div>
+          <span className="text-2xl font-black tabular-nums" style={{ color: cfg.accent }}>{dept.totalScore}%</span>
+          <div className="flex items-center justify-center mt-1"><TrendBadge trend={dept.trend} /></div>
           <p className="text-xs font-semibold text-slate-900 mt-2 leading-snug">{dept.name}</p>
         </div>
-        {expanded && dept.reports && (
-          <div className="mt-3 space-y-2 border-t border-black/10 pt-3 text-[11px]">
-            {dept.reports.map((rep, i) => {
-              const color = CRIT_COLORS[i % CRIT_COLORS.length];
-              return (
-                <div key={i} className="space-y-0.5">
-                  <div className="flex justify-between items-center text-[10px] gap-1">
-                    <span className="text-slate-500 font-medium truncate max-w-[120px]">{rep.label}</span>
-                    <span className="font-mono font-bold text-slate-800">{rep.score}%</span>
-                  </div>
-                  <div className="h-1 rounded-full bg-black/10 overflow-hidden">
-                    <div className="h-full rounded-full transition-all" style={{ width: `${rep.score}%`, background: color }} />
-                  </div>
+        {expanded && (
+          <div className="mt-3 space-y-2 border-t border-black/10 pt-3">
+            {dept.criterionScores.map(cs => (
+              <div key={cs.id} className="space-y-0.5">
+                <div className="flex justify-between items-center text-[10px] gap-1">
+                  <span className="text-slate-500 font-medium truncate max-w-[110px]">{cs.name}</span>
+                  <span className="font-mono font-bold text-slate-800">{cs.score}%</span>
                 </div>
-              );
-            })}
+                <ScoreBar score={cs.score} color={cs.color} />
+              </div>
+            ))}
           </div>
         )}
         <div className="mt-2 flex justify-center">
@@ -164,23 +426,21 @@ const PodiumCard = ({
     </button>
   );
 };
- 
-// Leaderboard Row ───────────────────────────────────────────────────────────
- 
-const LeaderboardRow = ({ dept, rank, activeCriteria }: { dept: DeptScore; rank: number; activeCriteria: AppraisalCriterion[] }) => {
+
+// ── Leaderboard Row ───────────────────────────────────────────────────────────
+
+const LeaderboardRow = ({ dept }: { dept: DeptScore }) => {
   const [open, setOpen] = useState(false);
-  const badge = rank <= 3 ? (["gold", "silver", "bronze"] as const)[rank - 1] : "none";
-  const cfg = MEDAL_CONFIG[badge];
-  const Icon = cfg.icon;
- 
+  const badge = dept.rank <= 3 ? (["gold", "silver", "bronze"] as const)[dept.rank - 1] : "none";
+  const cfg = MEDAL_CFG[badge];
+  const { Icon } = cfg;
+
   return (
     <>
-      <tr className={cn("border-b transition-colors cursor-pointer hover:bg-slate-50", open ? "bg-indigo-50/10" : "")} onClick={() => setOpen(o => !o)}>
+      <tr className={cn("border-b transition-colors cursor-pointer hover:bg-slate-50", open && "bg-indigo-50/20")}
+        onClick={() => setOpen(o => !o)}>
         <td className="p-3">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-sm w-5 tabular-nums text-slate-400">{rank}</span>
-            <RankDelta current={rank} prev={dept.prevRank} />
-          </div>
+          <span className="font-bold text-sm tabular-nums text-slate-400">{dept.rank}</span>
         </td>
         <td className="p-3">
           <div className="flex items-center gap-2">
@@ -189,63 +449,47 @@ const LeaderboardRow = ({ dept, rank, activeCriteria }: { dept: DeptScore; rank:
           </div>
         </td>
         <td className="p-3 text-center">
-          <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold font-mono" style={{ background: cfg.accent + "18", color: cfg.accent }}>
-            {dept.score}%
+          <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold font-mono"
+            style={{ background: cfg.accent + "18", color: cfg.accent }}>
+            {dept.totalScore}%
           </span>
         </td>
-        {dept.reports && dept.reports.map((rep, i) => {
-          const color = CRIT_COLORS[i % CRIT_COLORS.length];
-          return (
-            <td key={i} className="p-3 text-center hidden md:table-cell">
-              <div className="flex flex-col items-center gap-0.5 max-w-[100px] mx-auto">
-                <span className="font-mono text-xs font-semibold">{rep.score}%</span>
-                <div className="w-12 h-1 rounded-full bg-slate-100 overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${rep.score}%`, background: color }} />
-                </div>
+        {dept.criterionScores.map(cs => (
+          <td key={cs.id} className="p-3 text-center hidden md:table-cell">
+            <div className="flex flex-col items-center gap-1 max-w-[90px] mx-auto">
+              <span className="font-mono text-xs font-semibold" style={{ color: cs.color }}>{cs.score}%</span>
+              <div className="w-14 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full transition-all" style={{ width: `${cs.score}%`, background: cs.color }} />
               </div>
-            </td>
-          );
-        })}
+            </div>
+          </td>
+        ))}
         <td className="p-3 text-center"><TrendBadge trend={dept.trend} /></td>
         <td className="p-3 text-center">
           <ChevronRight className={cn("h-4 w-4 text-slate-400 transition-transform", open && "rotate-90")} />
         </td>
       </tr>
+
       {open && (
-        <tr className="bg-slate-50/40 border-b">
-          <td colSpan={10} className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div>
-                <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-2">Evaluated Indicators</p>
-                <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
-                  {dept.indicators.map((ind, i) => (
-                    <div key={i} className="flex items-start gap-2 text-xs text-slate-600">
-                      <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" style={{ color: cfg.accent }} />
-                      {ind}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-2">Score Breakdown Matrix</p>
-                <div className="space-y-2.5">
-                  {dept.reports && dept.reports.map((rep, i) => {
-                    const color = CRIT_COLORS[i % CRIT_COLORS.length];
-                    const weighted = Math.round((rep.score * rep.weight) / 100);
-                    return (
-                      <div key={i} className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-600 font-medium">{rep.label} <span className="opacity-60">×{rep.weight}%</span></span>
-                          <span className="font-mono font-bold text-slate-700">{rep.score}% → {weighted} pts</span>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${rep.score}%`, background: color }} />
-                        </div>
+        <tr className="bg-slate-50/30 border-b">
+          <td colSpan={20} className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {dept.criterionScores.map(cs => {
+                const weighted = Math.round((cs.score * cs.weight) / 100);
+                return (
+                  <div key={cs.id} className="border rounded-xl p-3 bg-white space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ background: cs.color }} />
+                        <span className="text-xs font-bold text-slate-800">{cs.name}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">×{cs.weight}%</span>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+                      <span className="font-mono text-xs font-bold text-slate-700">{cs.score}% → {weighted} pts</span>
+                    </div>
+                    <ScoreBar score={cs.score} color={cs.color} h="h-2" />
+                  </div>
+                );
+              })}
             </div>
           </td>
         </tr>
@@ -253,9 +497,9 @@ const LeaderboardRow = ({ dept, rank, activeCriteria }: { dept: DeptScore; rank:
     </>
   );
 };
- 
+
 // ── Main Component ────────────────────────────────────────────────────────────
- 
+
 export default function RecognitionBoard({
   indicators: propIndicators = [],
   monthlyData = [],
@@ -263,253 +507,194 @@ export default function RecognitionBoard({
   indicators?: Indicator[];
   monthlyData?: MonthlyEntry[];
 }) {
-  const { indicators: contextIndicators } = useIndicators();
-  const indicators = propIndicators.length > 0 ? propIndicators : contextIndicators;
+  const { indicators: ctxIndicators } = useIndicators();
+  const indicators = propIndicators.length > 0 ? propIndicators : ctxIndicators;
 
-  const [expandedPodium, setExpandedPodium] = useState<number | null>(null);
-  const [viewTab, setViewTab] = useState("podium");
-  const [selectedEFY, setSelectedEFY] = useState("2018 EFY");
+  // ── Period filters ──────────────────────────────────────────────────────
   const [selectedInterval, setSelectedInterval] = useState<"annual" | "six-month" | "quarterly">("annual");
   const [selectedPeriod, setSelectedPeriod] = useState("Annual Summary");
 
-  // Secondary dropdown syncing
   useEffect(() => {
-    if (selectedInterval === "annual") {
-      setSelectedPeriod("Annual Summary");
-    } else if (selectedInterval === "six-month") {
-      setSelectedPeriod("1st Half-Year (H1)");
-    } else {
-      setSelectedPeriod("1st Quarter (Q1)");
-    }
+    if (selectedInterval === "annual") setSelectedPeriod("Annual Summary");
+    else if (selectedInterval === "six-month") setSelectedPeriod("1st Half-Year (H1)");
+    else setSelectedPeriod("1st Quarter (Q1)");
   }, [selectedInterval]);
 
-  const [editingCriterion, setEditingCriterion] = useState<AppraisalCriterion | null>(null);
-  const [showManager, setShowManager] = useState(false);
-
-  const [newName, setNewName] = useState("");
-  const [newWeight, setNewWeight] = useState(25);
-  const [newDepts, setNewDepts] = useState<string[]>([]);
-  const [newIndCodes, setNewIndCodes] = useState<string[]>([]);
-
+  // ── Hook ────────────────────────────────────────────────────────────────
   const {
     activeCriteria,
-    loading: criteriaLoading,
-    selectedEFY: critEFY,
-    setSelectedEFY: setCritEFY,
+    loadingCriteria,
+    selectedEFY,
+    setSelectedEFY,
     addCriterion,
     updateCriterion,
     deleteCriterion,
-    reload: reloadCriteria,
-    availableIndicatorsForDepts,
+    getScore,
+    upsertScore,
   } = useAppraisalCriteria(indicators);
 
-  useEffect(() => {
-    if (showManager && critEFY !== selectedEFY) {
-      setCritEFY(selectedEFY);
-    }
-  }, [showManager, critEFY, selectedEFY, setCritEFY]);
+  const pKey = makePeriodKey(selectedEFY, selectedInterval, selectedPeriod);
 
-  const handleSaveCriterion = async () => {
-    if (!newName.trim()) {
-      toast.error("Criterion name is required!");
-      return;
-    }
+  // ── UI state ────────────────────────────────────────────────────────────
+  const [viewTab, setViewTab] = useState("podium");
+  const [activePanel, setActivePanel] = useState<"criteria" | "entry" | null>(null);
+  const [expandedPodium, setExpandedPodium] = useState<number | null>(null);
+  const [modalCrit, setModalCrit] = useState<"new" | AppraisalCriterion | null>(null);
 
-    const deptPayload = newDepts.length > 0 ? newDepts : DEPARTMENTS;
-    const totalWeight = activeCriteria.reduce((sum, c) => sum + c.weight, 0);
-    const currentWeightLimit = totalWeight - (editingCriterion ? editingCriterion.weight : 0) + newWeight;
-
-    if (currentWeightLimit > 105) {
-      toast.warning(`Warning: Total weights are aggregating to ${currentWeightLimit}%. We recommend targeting 100%.`);
-    }
-
-    try {
-      if (editingCriterion) {
-        await updateCriterion(editingCriterion.id, {
-          name: newName,
-          weight: newWeight,
-          departmentCategories: deptPayload,
-          linkedIndicatorCodes: newIndCodes,
-        });
-        toast.success("Criterion updated successfully");
-      } else {
-        await addCriterion({
-          name: newName,
-          efy: selectedEFY,
-          weight: newWeight,
-          departmentCategories: deptPayload,
-          linkedIndicatorCodes: newIndCodes,
-        });
-        toast.success("Criterion created successfully");
-      }
-
-      setEditingCriterion(null);
-      setNewName("");
-      setNewWeight(25);
-      setNewDepts([]);
-      setNewIndCodes([]);
-    } catch (err) {
-      // errors handled in hook
-    }
+  // ── Score change handler ────────────────────────────────────────────────
+  const handleScoreChange = (deptName: string, criterionId: string, subMetricId: string, score: number) => {
+    upsertScore({ deptName, criterionId, subMetricId, score: Math.max(0, Math.min(100, score)), periodKey: pKey, efy: selectedEFY });
   };
 
-  const handleEditCriterion = (crit: AppraisalCriterion) => {
-    setEditingCriterion(crit);
-    setNewName(crit.name);
-    setNewWeight(crit.weight);
-    setNewDepts(crit.departmentCategories);
-    setNewIndCodes(crit.linkedIndicatorCodes);
-    setShowManager(true);
+  // ── Criterion CRUD handlers ─────────────────────────────────────────────
+  const handleSaveCrit = async (draft: DraftCriterion & { id?: string }) => {
+    const totalOthers = activeCriteria
+      .filter(c => c.id !== draft.id)
+      .reduce((s, c) => s + c.weight, 0);
+    if (totalOthers + draft.weight > 100) {
+      toast.warning(`Total weights would reach ${totalOthers + draft.weight}%. Please adjust to sum to 100%.`);
+    }
+
+    if (draft.id) {
+      await updateCriterion(draft.id, {
+        name: draft.name, weight: draft.weight,
+        departmentCategories: draft.departmentCategories,
+        linkedIndicatorCodes: draft.linkedIndicatorCodes,
+        dataSource: draft.dataSource, subMetrics: draft.subMetrics,
+        icon: draft.icon, color: draft.color, description: draft.description,
+      });
+    } else {
+      await addCriterion({ ...draft, efy: selectedEFY });
+    }
+    setModalCrit(null);
   };
 
-  const handleDeleteCriterion = async (id: string) => {
-    try {
-      await deleteCriterion(id);
-    } catch (err) {
-      // error handled in hook
-    }
-  };
-  const rankedDepts = useMemo(() => {
-    const months = (PERIOD_MAP as any)[selectedInterval]?.[selectedPeriod] || (PERIOD_MAP as any).annual["Annual Summary"];
-    if (!indicators || !monthlyData || !activeCriteria || !months) return [];
+  // ── Score computation ───────────────────────────────────────────────────
+  const rankedDepts = useMemo<DeptScore[]>(() => {
+    const months = PERIOD_MAP[selectedInterval]?.[selectedPeriod] ?? PERIOD_MAP.annual["Annual Summary"];
+    const totalWeight = activeCriteria.reduce((s, c) => s + c.weight, 0);
+    const trends: DeptScore["trend"][] = ["up", "stable", "down", "stable", "up", "stable", "up", "down", "stable", "up", "stable", "down"];
 
     return DEPARTMENTS.map((deptName, idx) => {
-      // Find custom criteria loaded for this department category
-      const deptCriteria = activeCriteria.filter((c) => c.departmentCategories.includes(deptName));
-      // Fallback if none defined
-      const effectiveCriteria = deptCriteria.length > 0 ? deptCriteria : activeCriteria;
-
       let totalWeightedScore = 0;
-      let totalWeightUsed = 0;
 
-      const criterionReports = effectiveCriteria.map((crit) => {
-        // Link indicators for this department on this criterion
-        let linked = indicators.filter((ind) => ind.programArea === deptName);
-        if (crit.linkedIndicatorCodes && crit.linkedIndicatorCodes.length > 0) {
-          linked = linked.filter((ind) => crit.linkedIndicatorCodes.includes(ind.code));
-        }
+      const criterionScores = activeCriteria.map(crit => {
+        let score = 0;
 
-        let totalAchievement = 0;
-        let scoredCount = 0;
-
-        linked.forEach((ind) => {
-          const periodData = monthlyData.filter((e) => e.code === ind.code && months.includes(e.month));
-          const actualSum = periodData.reduce((sum, e) => sum + (e.actual ?? 0), 0);
-
-          // Scaled Target mapping to reporting months count
-          const targetScaled = (ind.target / 12) * months.length;
-          const ratio = targetScaled > 0 ? actualSum / targetScaled : 0;
-
-          totalAchievement += Math.min(1.0, ratio) * 100; // Cap single progress score to 100%
-          scoredCount++;
-        });
-
-        // Calculate criterion score with standard 75 fallback if no data recorded
-        let score = 75;
-        if (scoredCount > 0) {
-          score = Math.round(totalAchievement / scoredCount);
+        if (crit.dataSource === "auto") {
+          const deptInds = indicators.filter(ind => ind.programArea === deptName);
+          let totalAch = 0, count = 0;
+          deptInds.forEach(ind => {
+            const periodData = monthlyData.filter(e => e.code === ind.code && months.includes(e.month));
+            const actual = periodData.reduce((s, e) => s + (e.actual ?? 0), 0);
+            const targetScaled = (ind.target / 12) * months.length;
+            const ratio = targetScaled > 0 ? actual / targetScaled : 0;
+            totalAch += Math.min(1, ratio) * 100;
+            count++;
+          });
+          score = count > 0 ? Math.round(totalAch / count) : 0;
         } else {
-          // Intelligent fallback varies by department index so scoring isn't flat
-          const deptOffset = Math.abs(idx * 3 + 7) % 25;
-          score = Math.max(50, 85 - deptOffset);
+          const subWeightSum = crit.subMetrics.reduce((s, sm) => s + sm.weight, 0);
+          if (subWeightSum > 0) {
+            const weighted = crit.subMetrics.reduce((sum, sm) => {
+              return sum + getScore(deptName, crit.id, sm.id, pKey) * sm.weight;
+            }, 0);
+            score = Math.round(weighted / subWeightSum);
+          }
         }
 
         totalWeightedScore += score * crit.weight;
-        totalWeightUsed += crit.weight;
-
-        return {
-          label: crit.name,
-          weight: crit.weight,
-          score,
-          indicatorsList: linked.map((i) => i.indicator),
-        };
+        return { id: crit.id, name: crit.name, weight: crit.weight, score, color: crit.color };
       });
 
-      const finalScore = totalWeightUsed > 0 ? Math.round(totalWeightedScore / totalWeightUsed) : 75;
-
-      const trends = ["up", "stable", "down", "stable", "up", "stable"] as const;
-      const prevRanks = [2, 1, 4, 3, 5, 6, 8, 7, 9, 10, 11, 12];
-
-      const allLabels = criterionReports.flatMap(r => r.indicatorsList).filter(Boolean);
+      const totalScore = totalWeight > 0 ? Math.round(totalWeightedScore / totalWeight) : 0;
 
       return {
         name: deptName,
-        score: finalScore,
-        reports: criterionReports,
-        indicators: allLabels.length > 0 ? allLabels.slice(0, 5) : ["Clinical indicators connected beautifully"],
-        trend: trends[idx % trends.length],
-        prevRank: prevRanks[idx % prevRanks.length],
-        badge: "none" as const,
+        totalScore,
         rank: 0,
+        criterionScores,
+        trend: trends[idx % trends.length],
+        badge: "none" as const,
+        indicatorCount: indicators.filter(i => i.programArea === deptName).length,
       };
     })
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => b.totalScore - a.totalScore)
     .map((d, i) => ({
       ...d,
       rank: i + 1,
       badge: (i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "none") as DeptScore["badge"],
     }));
-  }, [indicators, monthlyData, activeCriteria, selectedInterval, selectedPeriod]);
+  }, [indicators, monthlyData, activeCriteria, getScore, pKey, selectedInterval, selectedPeriod]);
 
   const topThree = rankedDepts.slice(0, 3);
-  const podiumOrder = [topThree[1], topThree[0], topThree[2]].filter(Boolean);
+  const podiumOrder = [topThree[1], topThree[0], topThree[2]].filter(Boolean) as DeptScore[];
   const avgScore = rankedDepts.length > 0
-    ? Math.round(rankedDepts.reduce((s, d) => s + d.score, 0) / rankedDepts.length)
+    ? Math.round(rankedDepts.reduce((s, d) => s + d.totalScore, 0) / rankedDepts.length)
     : 0;
+  const totalW = activeCriteria.reduce((s, c) => s + c.weight, 0);
 
   return (
-    <div id="recognition-board-container" className="space-y-6">
-      {/* Header */}
+    <div className="space-y-5">
+      {/* ── Header ────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <img src="/Plan compass.png" alt="Plan Compass Logo" className="h-10 w-10 object-contain rounded-lg shadow-sm" />
+          <img src="/Plan compass.png" alt="Plan Compass" className="h-10 w-10 object-contain rounded-lg shadow-sm" />
           <div>
             <h2 className="text-lg font-bold tracking-tight text-slate-900">Hospital Recognition Board</h2>
-            <p className="text-xs text-slate-500 font-medium">
-              Active Block: <strong className="text-amber-600 font-bold uppercase">{selectedEFY}</strong>
+            <p className="text-xs text-slate-500">
+              Active Block: <strong className="text-amber-600 uppercase">{selectedEFY}</strong>
+              <span className="mx-1.5 text-slate-300">·</span>
+              {selectedPeriod}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {activeCriteria.map((c, i) => (
-            <div key={c.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border bg-white shadow-xs text-xs">
-              <span className="w-2 h-2 rounded-full inline-block" style={{ background: CRIT_COLORS[i % CRIT_COLORS.length] }} />
-              <span className="text-slate-500 font-medium truncate max-w-[120px]">{c.name}</span>
-              <span className="font-bold text-slate-900 tabular-nums">{c.weight}%</span>
-            </div>
-          ))}
+        {/* Criteria weight chips */}
+        <div className="flex flex-wrap gap-1.5 items-center">
+          {activeCriteria.map(c => {
+            const CIcon = CRIT_ICONS[c.icon] ?? Activity;
+            return (
+              <div key={c.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border bg-white shadow-sm text-xs">
+                <CIcon className="h-3 w-3 shrink-0" style={{ color: c.color }} />
+                <span className="text-slate-500 truncate max-w-[90px]">{c.name}</span>
+                <span className="font-bold tabular-nums" style={{ color: c.color }}>{c.weight}%</span>
+              </div>
+            );
+          })}
+          <div className={cn(
+            "flex items-center px-2.5 py-1.5 rounded-lg border text-xs font-bold tabular-nums",
+            totalW === 100 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"
+          )}>
+            {totalW === 100 ? <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> : <AlertCircle className="h-3.5 w-3.5 mr-1" />}
+            Σ {totalW}%
+          </div>
         </div>
       </div>
 
-      {/* Period Filter Bar */}
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+      {/* ── Period Filter ────────────────────────────────────────────── */}
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <CalendarDays className="h-5 w-5 text-indigo-500 animate-pulse" />
+          <CalendarDays className="h-5 w-5 text-indigo-500" />
           <div>
             <h4 className="text-xs font-bold text-slate-800">Dynamic Appraisal Matrix Controls</h4>
-            <p className="text-[10px] text-slate-400">Toggle EFY, reporting interval, and specific period bounds.</p>
+            <p className="text-[10px] text-slate-400">Toggle EFY, reporting interval, and specific period.</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
           <select value={selectedEFY} onChange={e => setSelectedEFY(e.target.value)}
-            className="h-9 px-3 border border-indigo-200 rounded-xl text-xs bg-indigo-50/45 text-indigo-900 font-bold focus:outline-none cursor-pointer hover:bg-indigo-50 transition-colors">
-            <option value="2016 EFY">2016 EFY (Baseline)</option>
-            <option value="2017 EFY">2017 EFY (Intermediate)</option>
-            <option value="2018 EFY">2018 EFY (Active)</option>
-            <option value="2019 EFY">2019 EFY (Plan)</option>
+            className="h-9 px-3 border border-indigo-200 rounded-xl text-xs bg-indigo-50/45 text-indigo-900 font-bold focus:outline-none cursor-pointer">
+            {EFY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          
           <select value={selectedInterval} onChange={e => setSelectedInterval(e.target.value as any)}
-            className="h-9 px-3 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 font-bold focus:outline-none cursor-pointer hover:bg-slate-50 transition-colors">
+            className="h-9 px-3 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 font-bold focus:outline-none cursor-pointer">
             <option value="annual">Annual YTD</option>
             <option value="six-month">Six-Month</option>
             <option value="quarterly">Quarterly</option>
           </select>
-
           {selectedInterval !== "annual" && (
             <select value={selectedPeriod} onChange={e => setSelectedPeriod(e.target.value)}
-              className="h-9 px-3 border border-indigo-200 rounded-xl text-xs bg-white text-indigo-900 font-bold focus:outline-none cursor-pointer hover:bg-indigo-50 transition-colors">
-              {Object.keys(PERIOD_MAP[selectedInterval] || {}).map(p => (
+              className="h-9 px-3 border border-indigo-200 rounded-xl text-xs bg-white text-indigo-900 font-bold focus:outline-none cursor-pointer">
+              {Object.keys(PERIOD_MAP[selectedInterval] ?? {}).map(p => (
                 <option key={p} value={p}>{p}</option>
               ))}
             </select>
@@ -517,213 +702,146 @@ export default function RecognitionBoard({
         </div>
       </div>
 
-      {/* Criteria Manager Builder */}
-      <div className="bg-white border rounded-2xl p-5 shadow-xs space-y-4">
-        <div className="flex items-center justify-between border-b pb-3">
-          <div className="flex items-center gap-2.5">
-            <Settings2 className="h-4 w-4 text-indigo-500" />
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Appraisal Criteria Manager ({selectedEFY})</h3>
-              <p className="text-xs text-slate-500">Formulate criteria by mapping and weighing data-house indicators.</p>
-            </div>
+      {/* ── Panel Toggles ────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* Criteria Manager toggle */}
+        <button onClick={() => setActivePanel(activePanel === "criteria" ? null : "criteria")}
+          className={cn(
+            "flex items-center gap-3 p-4 rounded-2xl border text-left transition-all",
+            activePanel === "criteria"
+              ? "bg-indigo-600 text-white border-indigo-600 shadow-md"
+              : "bg-white border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/30"
+          )}>
+          <Settings2 className="h-5 w-5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold">Criteria Manager</p>
+            <p className={cn("text-[11px] truncate", activePanel === "criteria" ? "text-indigo-200" : "text-slate-400")}>
+              {activeCriteria.length} criteria · Σ {totalW}%
+            </p>
           </div>
-          <Button 
-            size="sm" 
-            variant="outline" 
-            onClick={() => {
-              setEditingCriterion(null);
-              setNewName("");
-              setNewWeight(25);
-              setNewDepts([]);
-              setNewIndCodes([]);
-              setShowManager(!showManager);
-            }}
-            className="text-xs font-semibold gap-1.5"
-          >
-            {showManager ? "Close Panel" : "Setup appraisal criteria"}
-          </Button>
-        </div>
+          <ChevronDown className={cn("h-4 w-4 ml-auto shrink-0 transition-transform", activePanel === "criteria" && "rotate-180")} />
+        </button>
 
-        {showManager && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 pt-2">
-            {/* Creator form */}
-            <div className="lg:col-span-1 border rounded-xl p-4 bg-slate-50/50 space-y-4">
-              <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                {editingCriterion ? "Edit Criterion" : "Add New Criterion"}
-              </p>
-              
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 mb-1">Criterion Name</label>
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="e.g., Safe EPI Coverage"
-                    className="w-full px-3 py-2 border rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 mb-1">Appraisal Weight (%)</label>
-                  <input
-                    type="number"
-                    value={newWeight}
-                    onChange={(e) => setNewWeight(Math.max(1, parseInt(e.target.value) || 0))}
-                    className="w-full px-3 py-2 border rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono text-slate-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 mb-1">Target Departments</label>
-                  <div className="max-h-24 overflow-y-auto border rounded-md p-2 bg-white space-y-1">
-                    {DEPARTMENTS.map(dept => (
-                      <label key={dept} className="flex items-center gap-2 cursor-pointer py-0.5 hover:bg-slate-50 rounded px-1">
-                        <input
-                          type="checkbox"
-                          checked={newDepts.includes(dept)}
-                          onChange={(e) => {
-                            if (e.target.checked) setNewDepts([...newDepts, dept]);
-                            else setNewDepts(newDepts.filter(d => d !== dept));
-                          }}
-                          className="rounded text-indigo-600 focus:ring-indigo-500"
-                        />
-                        <span className="text-[10px] text-slate-600 truncate">{dept}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 mb-1">
-                    Indicators from Master Plan ({indicators.filter(ind => newDepts.length === 0 || newDepts.includes(ind.programArea)).length} available)
-                  </label>
-                  <div className="max-h-32 overflow-y-auto border rounded-md p-2 bg-white space-y-1">
-                    {indicators.length === 0 ? (
-                      <p className="text-[10px] text-slate-450 italic">No indicators loaded</p>
-                    ) : (
-                      indicators
-                        .filter(ind => newDepts.length === 0 || newDepts.includes(ind.programArea))
-                        .map(ind => (
-                          <label key={ind.code} className="flex items-start gap-2 cursor-pointer py-0.5 hover:bg-slate-50 rounded px-1">
-                            <input
-                              type="checkbox"
-                              checked={newIndCodes.includes(ind.code)}
-                              onChange={(e) => {
-                                if (e.target.checked) setNewIndCodes([...newIndCodes, ind.code]);
-                                else setNewIndCodes(newIndCodes.filter(c => c !== ind.code));
-                              }}
-                              className="rounded mt-0.5 text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <span className="text-[10px] text-slate-650 font-medium">
-                              <strong className="text-indigo-600">{ind.code}</strong>: {ind.indicator}
-                            </span>
-                          </label>
-                        ))
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    size="sm"
-                    className="flex-1 text-xs"
-                    onClick={handleSaveCriterion}
-                  >
-                    {editingCriterion ? "Save Changes" : "Formulate"}
-                  </Button>
-                  {editingCriterion && (
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
-                      className="text-xs"
-                      onClick={() => {
-                        setEditingCriterion(null);
-                        setNewName("");
-                        setNewDepts([]);
-                        setNewIndCodes([]);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* List block */}
-            <div className="lg:col-span-2 border rounded-xl p-4 bg-white divide-y space-y-3">
-              <div className="flex justify-between items-center pb-2">
-                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Active Evaluation Matrix</p>
-                <div className="text-right">
-                  <span className={`text-[11px] font-bold px-3 py-1 rounded-full ${
-                    activeCriteria.reduce((sum, c) => sum + c.weight, 0) === 100 
-                      ? "bg-emerald-100 text-emerald-800" 
-                      : "bg-amber-100 text-amber-800"
-                  }`}>
-                    Sum of Weights: {activeCriteria.reduce((sum, c) => sum + c.weight, 0)}%
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pt-2">
-                {activeCriteria.length === 0 ? (
-                  <p className="text-center text-xs text-slate-400 py-6 italic">No custom criteria created for this year. Mappings will fallback to auto defaults.</p>
-                ) : (
-                  activeCriteria.map((crit, idx) => (
-                    <div key={crit.id} className="flex items-start justify-between p-3 rounded-lg border bg-slate-50/50 hover:bg-slate-50 transition-colors">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: CRIT_COLORS[idx % CRIT_COLORS.length] }} />
-                          <h4 className="text-xs font-bold text-slate-800">{crit.name}</h4>
-                          <span className="text-[10px] font-mono font-bold text-slate-500 bg-white border px-1.5 rounded">{crit.weight}% weight</span>
-                        </div>
-                        <p className="text-[10px] text-slate-500">
-                          <strong>Manned Departments:</strong> {crit.departmentCategories.join(", ")}
-                        </p>
-                        <p className="text-[10px] text-slate-500">
-                          <strong>Indicators:</strong> {crit.linkedIndicatorCodes && crit.linkedIndicatorCodes.length > 0
-                            ? crit.linkedIndicatorCodes.join(", ") 
-                            : "All standard indicators of mapped depts (Auto)"
-                          }
-                        </p>
-                      </div>
-
-                      <div className="flex gap-2 shrink-0">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
-                          onClick={() => handleEditCriterion(crit)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-[10px] font-bold text-red-650 hover:text-red-800"
-                          onClick={() => handleDeleteCriterion(crit.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+        {/* Manual Entry toggle */}
+        <button onClick={() => setActivePanel(activePanel === "entry" ? null : "entry")}
+          className={cn(
+            "flex items-center gap-3 p-4 rounded-2xl border text-left transition-all",
+            activePanel === "entry"
+              ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
+              : "bg-white border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/30"
+          )}>
+          <ClipboardList className="h-5 w-5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold">Manual Data Entry</p>
+            <p className={cn("text-[11px] truncate", activePanel === "entry" ? "text-emerald-200" : "text-slate-400")}>
+              Quality, Audit & Reporting scores
+            </p>
           </div>
-        )}
+          <ChevronDown className={cn("h-4 w-4 ml-auto shrink-0 transition-transform", activePanel === "entry" && "rotate-180")} />
+        </button>
       </div>
 
-      {/* Statistics summary */}
+      {/* ── Criteria Manager Panel ────────────────────────────────────── */}
+      {activePanel === "criteria" && (
+        <div className="bg-white border border-indigo-100 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-indigo-50 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Appraisal Criteria Manager ({selectedEFY})</h3>
+              <p className="text-[11px] text-slate-500">Define, weight, and manage evaluation criteria for department appraisal.</p>
+            </div>
+            <Button size="sm" onClick={() => setModalCrit("new")} className="text-xs gap-1.5">
+              <Plus className="h-3.5 w-3.5" /> Add Criterion
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            {loadingCriteria && <p className="text-xs text-slate-400 italic text-center py-4">Loading criteria…</p>}
+            {!loadingCriteria && activeCriteria.length === 0 && (
+              <div className="text-center py-8 border-2 border-dashed rounded-2xl">
+                <Settings2 className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-400 font-medium">No criteria defined</p>
+                <p className="text-xs text-slate-300 mt-1">Click "Add Criterion" to get started</p>
+              </div>
+            )}
+            {activeCriteria.map(c => {
+              const CIcon = CRIT_ICONS[c.icon] ?? Activity;
+              return (
+                <div key={c.id} className="flex items-start gap-4 p-4 rounded-xl border hover:border-slate-300 transition-colors bg-slate-50/30">
+                  <div className="p-2 rounded-xl shrink-0" style={{ background: c.color + "15" }}>
+                    <CIcon className="h-4 w-4" style={{ color: c.color }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-slate-800">{c.name}</span>
+                      <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full border"
+                        style={{ color: c.color, borderColor: c.color + "40", background: c.color + "10" }}>
+                        {c.weight}% weight
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold">
+                        {c.dataSource === "auto" ? "🔄 Auto" : "✍️ Manual"}
+                      </span>
+                    </div>
+                    {c.description && <p className="text-[11px] text-slate-500 mt-0.5">{c.description}</p>}
+                    {c.dataSource === "manual" && c.subMetrics.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {c.subMetrics.map(sm => (
+                          <span key={sm.id} className="text-[10px] px-1.5 py-0.5 bg-white border rounded-md text-slate-500">
+                            {sm.label} <span className="text-slate-400">{sm.weight}%</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => setModalCrit(c)}
+                      className="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => deleteCriterion(c.id)}
+                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className={cn(
+            "p-3 rounded-xl border text-center text-xs font-bold",
+            totalW === 100 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"
+          )}>
+            {totalW === 100 ? "✅ Weights sum to 100% — properly balanced" : `⚠️ Weights sum to ${totalW}% — adjust to reach 100%`}
+          </div>
+        </div>
+      )}
+
+      {/* ── Manual Entry Panel ────────────────────────────────────────── */}
+      {activePanel === "entry" && (
+        <div className="bg-white border border-emerald-100 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="border-b border-emerald-50 pb-3">
+            <h3 className="text-sm font-bold text-slate-900">Manual Score Entry</h3>
+            <p className="text-[11px] text-slate-500">
+              Scores for <strong>{selectedPeriod}</strong> · <strong>{selectedEFY}</strong> — saved per department automatically.
+            </p>
+          </div>
+          <ManualEntryPanel
+            criteria={activeCriteria}
+            periodKey={pKey}
+            getScore={getScore}
+            onScoreChange={handleScoreChange}
+          />
+        </div>
+      )}
+
+      {/* ── Stats ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-3">
         <Card className="p-3 text-center border bg-slate-50/20">
           <p className="text-xl font-extrabold text-slate-900">{rankedDepts.length}</p>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Departments</p>
         </Card>
         <Card className="p-3 text-center border bg-slate-50/20">
-          <p className="text-xl font-extrabold text-amber-600">{rankedDepts[0]?.score ?? 0}%</p>
+          <p className="text-xl font-extrabold text-amber-600">{rankedDepts[0]?.totalScore ?? 0}%</p>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Top Score</p>
         </Card>
         <Card className="p-3 text-center border bg-slate-50/20">
@@ -732,7 +850,7 @@ export default function RecognitionBoard({
         </Card>
       </div>
 
-      {/* Main Tabs */}
+      {/* ── Main Tabs ─────────────────────────────────────────────────── */}
       <Tabs value={viewTab} onValueChange={setViewTab} className="space-y-4">
         <TabsList className="bg-slate-100 p-1 rounded-xl w-fit flex gap-1 border">
           <TabsTrigger value="podium" className="text-xs px-3 py-1.5 font-bold flex items-center gap-1.5">
@@ -742,89 +860,100 @@ export default function RecognitionBoard({
             <BarChart3 className="h-3.5 w-3.5 text-indigo-500" />Full Rankings
           </TabsTrigger>
         </TabsList>
- 
+
         {/* Podium */}
         <TabsContent value="podium" className="mt-4">
           <div className="flex flex-col md:flex-row justify-center items-center md:items-end gap-6 pb-6 pt-4 max-w-3xl mx-auto">
-            {podiumOrder[0] && (
-              <div className="w-[180px] shrink-0">
-                <PodiumCard dept={podiumOrder[0]} rank={2} expanded={expandedPodium === 1} onToggle={() => setExpandedPodium(expandedPodium === 1 ? null : 1)} />
-                <div className="mt-2 h-12 rounded-t-sm bg-slate-200/80 flex items-center justify-center border-t shadow-xs">
-                  <span className="text-2xl font-black text-slate-400">2</span>
+            {([
+              { dept: podiumOrder[0], rank: 2 as const },
+              { dept: podiumOrder[1], rank: 1 as const },
+              { dept: podiumOrder[2], rank: 3 as const },
+            ]).filter(x => x.dept).map(({ dept, rank }) => {
+              const badge = (["gold", "silver", "bronze"] as const)[rank - 1];
+              const cfg = MEDAL_CFG[badge];
+              const podiumIdx = rank - 1;
+              return (
+                <div key={dept.name} className={cn("shrink-0", rank === 1 ? "w-[200px]" : "w-[180px]")}>
+                  <PodiumCard dept={dept} rank={rank}
+                    expanded={expandedPodium === podiumIdx}
+                    onToggle={() => setExpandedPodium(expandedPodium === podiumIdx ? null : podiumIdx)} />
+                  <div className={cn(`mt-2 rounded-t-sm ${cfg.podiumH} ${cfg.podiumBg} flex items-center justify-center border-t`)}>
+                    <span className={cn("font-black", cfg.podiumNum)}>{rank}</span>
+                  </div>
                 </div>
-              </div>
-            )}
-            {podiumOrder[1] && (
-              <div className="w-[200px] shrink-0">
-                <PodiumCard dept={podiumOrder[1]} rank={1} expanded={expandedPodium === 0} onToggle={() => setExpandedPodium(expandedPodium === 0 ? null : 0)} />
-                <div className="mt-2 h-20 rounded-t-sm bg-amber-200/60 flex items-center justify-center border-t border-amber-300/45 shadow-xs">
-                  <span className="text-3xl font-black text-amber-600">1</span>
-                </div>
-              </div>
-            )}
-            {podiumOrder[2] && (
-              <div className="w-[180px] shrink-0">
-                <PodiumCard dept={podiumOrder[2]} rank={3} expanded={expandedPodium === 2} onToggle={() => setExpandedPodium(expandedPodium === 2 ? null : 2)} />
-                <div className="mt-2 h-8 rounded-t-sm bg-amber-100/40 flex items-center justify-center border-t shadow-xs">
-                  <span className="text-xl font-black text-amber-700">3</span>
-                </div>
-              </div>
-            )}
+              );
+            })}
           </div>
- 
+
           {rankedDepts.length > 3 && (
-            <Card className="rounded-2xl border bg-white p-5 shadow-xs">
-              <CardHeader className="pb-3 border-b">
-                <CardTitle className="text-sm font-bold text-slate-550 uppercase tracking-wider">Other Evaluated Departments</CardTitle>
+            <Card className="rounded-2xl border bg-white p-5 shadow-sm">
+              <CardHeader className="pb-3 border-b p-0 mb-4">
+                <CardTitle className="text-sm font-bold text-slate-500 uppercase tracking-wider">All Other Departments</CardTitle>
               </CardHeader>
-              <CardContent className="divide-y divide-slate-100 pt-0">
+              <CardContent className="divide-y divide-slate-100 p-0">
                 {rankedDepts.slice(3).map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-3 py-3">
+                  <div key={d.name} className="flex items-center gap-3 py-2.5">
                     <span className="text-sm font-bold text-slate-400 w-5 tabular-nums">{i + 4}</span>
                     <Award className="h-4 w-4 text-slate-400 shrink-0" />
                     <span className="flex-1 text-sm font-semibold text-slate-800">{d.name}</span>
                     <TrendBadge trend={d.trend} />
-                    <RankDelta current={i + 4} prev={d.prevRank} />
-                    <span className="font-mono text-sm font-bold text-indigo-650 w-12 text-right tabular-nums">{d.score}%</span>
+                    <div className="flex gap-1.5">
+                      {d.criterionScores.map(cs => (
+                        <span key={cs.id} className="text-[10px] font-mono px-1.5 py-0.5 rounded-md hidden sm:inline-block"
+                          style={{ color: cs.color, background: cs.color + "12" }}>
+                          {cs.score}%
+                        </span>
+                      ))}
+                    </div>
+                    <span className="font-mono text-sm font-bold text-indigo-600 w-12 text-right tabular-nums">{d.totalScore}%</span>
                   </div>
                 ))}
               </CardContent>
             </Card>
           )}
         </TabsContent>
- 
+
         {/* Leaderboard */}
         <TabsContent value="leaderboard" className="mt-4">
-          <Card className="rounded-2xl border bg-white shadow-xs overflow-hidden p-0">
+          <Card className="rounded-2xl border bg-white shadow-sm overflow-hidden p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr className="border-b bg-slate-50/50">
-                    <th className="p-3 text-left text-xs font-bold uppercase tracking-wider text-slate-450 w-16">Rank</th>
-                    <th className="p-3 text-left text-xs font-bold uppercase tracking-wider text-slate-450">Department</th>
-                    <th className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-450 w-28">Total Score</th>
-                    {activeCriteria.map((crit, idx) => (
-                      <th key={crit.id} className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-450 whitespace-nowrap hidden md:table-cell">
-                        <span className="inline-flex items-center justify-center gap-1.5 max-w-[130px] truncate">
-                          <span className="w-2 h-2 rounded-full inline-block" style={{ background: CRIT_COLORS[idx % CRIT_COLORS.length] }} />
-                          {crit.name.split(" ")[0]}..
-                        </span>
+                    <th className="p-3 text-xs font-bold uppercase tracking-wider text-slate-400 w-14">Rank</th>
+                    <th className="p-3 text-xs font-bold uppercase tracking-wider text-slate-400">Department</th>
+                    <th className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-400 w-24">Total</th>
+                    {activeCriteria.map(c => (
+                      <th key={c.id} className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap hidden md:table-cell">
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="w-2 h-2 rounded-full inline-block" style={{ background: c.color }} />
+                          <span className="max-w-[80px] truncate">{c.name.split(" ")[0]}</span>
+                          <span className="opacity-50 font-mono">{c.weight}%</span>
+                        </div>
                       </th>
                     ))}
-                    <th className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-450">Trend</th>
+                    <th className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-400 w-16">Trend</th>
                     <th className="p-3 w-8" />
                   </tr>
                 </thead>
                 <tbody>
-                  {rankedDepts.map((d, i) => (
-                    <LeaderboardRow key={d.name} dept={d} rank={i + 1} activeCriteria={activeCriteria} />
-                  ))}
+                  {rankedDepts.map(d => <LeaderboardRow key={d.name} dept={d} />)}
                 </tbody>
               </table>
             </div>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ── Criterion Modal ───────────────────────────────────────────── */}
+      {modalCrit !== null && (
+        <CriterionModal
+          initial={modalCrit === "new" ? null : { ...modalCrit }}
+          efy={selectedEFY}
+          onSave={handleSaveCrit}
+          onClose={() => setModalCrit(null)}
+        />
+      )}
     </div>
   );
 }

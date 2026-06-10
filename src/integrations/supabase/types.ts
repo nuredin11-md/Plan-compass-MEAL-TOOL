@@ -283,42 +283,107 @@ export type Database = {
       }
       appraisal_criteria: {
         Row: {
+          color: string | null
           created_at: string | null
           created_by: string | null
+          data_source: string | null
           department_categories: string[]
+          description: string | null
           efy: string
+          icon: string | null
           id: string
           is_active: boolean
           linked_indicator_codes: string[]
           name: string
+          sub_metrics: unknown[] | null
           updated_at: string | null
           weight: number
         }
         Insert: {
           created_at?: string | null
           created_by?: string | null
+          data_source?: string | null
           department_categories?: string[]
+          description?: string | null
           efy: string
+          icon?: string | null
           id?: string
           is_active?: boolean
           linked_indicator_codes?: string[]
           name: string
+          sub_metrics?: unknown[] | null
           updated_at?: string | null
           weight: number
+          color?: string | null
         }
         Update: {
           created_at?: string | null
           created_by?: string | null
+          data_source?: string | null
           department_categories?: string[]
+          description?: string | null
           efy?: string
+          icon?: string | null
           id?: string
           is_active?: boolean
           linked_indicator_codes?: string[]
           name?: string
+          sub_metrics?: unknown[] | null
           updated_at?: string | null
           weight?: number
+          color?: string | null
         }
         Relationships: []
+      }
+      appraisal_scores: {
+        Row: {
+          id: string
+          dept_name: string
+          criterion_id: string
+          sub_metric_id: string
+          score: number
+          period_key: string
+          efy: string
+          notes: string | null
+          created_by: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          dept_name: string
+          criterion_id: string
+          sub_metric_id: string
+          score: number
+          period_key: string
+          efy: string
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          dept_name?: string
+          criterion_id?: string
+          sub_metric_id?: string
+          score?: number
+          period_key?: string
+          efy?: string
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appraisal_scores_criterion_id_fkey"
+            columns: ["criterion_id"]
+            isOneToOne: false
+            referencedRelation: "appraisal_criteria"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       indicators: {
         Row: {
@@ -576,6 +641,7 @@ export type Database = {
         Relationships: []
       }
       profiles: {
+        Row: {
           created_at: string
           department: Database["public"]["Enums"]["department"]
           display_name: string
