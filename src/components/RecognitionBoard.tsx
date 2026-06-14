@@ -459,6 +459,13 @@ const CriterionModal = ({
       icon: "activity", color: "#4f46e5", description: "", isActive: true,
     }
   );
+  const [linkedSearch, setLinkedSearch] = useState("");
+  const filteredForLink = allIndicators.filter(
+    ind => !linkedSearch.trim() ||
+      ind.indicator.toLowerCase().includes(linkedSearch.toLowerCase()) ||
+      ind.code.toLowerCase().includes(linkedSearch.toLowerCase()) ||
+      ind.programArea.toLowerCase().includes(linkedSearch.toLowerCase())
+  );
 
   const addSM = () =>
     setD(p => ({
@@ -560,6 +567,79 @@ const CriterionModal = ({
               ))}
             </div>
           </div>
+
+          {/* Linked indicators for auto */}
+          {d.dataSource === "auto" && (
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                Auto-Use Indicators (from Master Plan)
+              </label>
+              <p className="text-[10px] text-slate-400 italic mb-2">
+                Select which Master Plan indicators this criterion uses for ward auto-scoring.
+              </p>
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={linkedSearch}
+                    onChange={e => setLinkedSearch(e.target.value)}
+                    placeholder="Search indicators..."
+                    className="w-full h-8 pl-8 pr-3 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div className="border border-slate-200 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                  {filteredForLink.length === 0 && (
+                    <p className="text-xs text-slate-400 italic text-center py-4">No indicators available</p>
+                  )}
+                  {filteredForLink.map(ind => {
+                    const checked = d.linkedIndicatorCodes.includes(ind.code);
+                    return (
+                      <label
+                        key={ind.code}
+                        className={cn(
+                          "flex items-start gap-2.5 px-3 py-2 cursor-pointer transition-colors",
+                          checked ? "bg-indigo-50" : "hover:bg-slate-50"
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setD(p => ({
+                            ...p,
+                            linkedIndicatorCodes: checked
+                              ? p.linkedIndicatorCodes.filter(c => c !== ind.code)
+                              : [...p.linkedIndicatorCodes, ind.code],
+                          }))}
+                          className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-800 leading-snug">{ind.indicator}</p>
+                          <p className="text-[10px] text-slate-400">
+                            <span className="font-mono text-indigo-500">{ind.code}</span>
+                            <span className="mx-1">·</span>
+                            {ind.programArea}
+                          </p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                {d.linkedIndicatorCodes.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {d.linkedIndicatorCodes.map(code => (
+                      <span key={code} className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md text-[10px] font-semibold">
+                        {code}
+                        <button onClick={() => setD(p => ({ ...p, linkedIndicatorCodes: p.linkedIndicatorCodes.filter(c => c !== code) }))} className="hover:text-indigo-900">
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Sub-metrics for manual */}
           {d.dataSource === "manual" && (
@@ -1018,9 +1098,11 @@ export default function RecognitionBoard({
         let score = 0;
 
         if (crit.dataSource === "auto") {
-          // Use ward's selected indicator codes
+          const codesToUse = crit.linkedIndicatorCodes.length > 0
+            ? crit.linkedIndicatorCodes
+            : wardSetup.indicatorCodes;
           const wardInds = indicators.filter(ind =>
-            wardSetup.indicatorCodes.includes(ind.code)
+            codesToUse.includes(ind.code)
           );
           let totalAch = 0, count = 0;
           wardInds.forEach(ind => {
@@ -1099,13 +1181,16 @@ export default function RecognitionBoard({
         <div className="flex flex-wrap gap-1.5 items-center">
           {activeCriteria.map(c => {
             const CIcon = CRIT_ICONS[c.icon] ?? Activity;
-            return (
-              <div key={c.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border bg-white shadow-sm text-xs">
-                <CIcon className="h-3 w-3 shrink-0" style={{ color: c.color }} />
-                <span className="text-slate-500 truncate max-w-[80px]">{c.name}</span>
-                <span className="font-bold tabular-nums" style={{ color: c.color }}>{c.weight}%</span>
-              </div>
-            );
+              return (
+                <div key={c.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border bg-white shadow-sm text-xs">
+                  <CIcon className="h-3 w-3 shrink-0" style={{ color: c.color }} />
+                  <span className="text-slate-500 truncate max-w-[80px]">{c.name}</span>
+                  <span className="font-bold tabular-nums" style={{ color: c.color }}>{c.weight}%</span>
+                  {c.dataSource === "auto" && c.linkedIndicatorCodes.length > 0 && (
+                    <span className="text-[10px] text-indigo-500 font-mono font-bold">{c.linkedIndicatorCodes.length} linked</span>
+                  )}
+                </div>
+              );
           })}
           <div className={cn(
             "flex items-center px-2.5 py-1.5 rounded-lg border text-xs font-bold",
