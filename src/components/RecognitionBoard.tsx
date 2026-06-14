@@ -54,26 +54,26 @@ const PRESET_WARDS = [
 const PERIOD_MAP: Record<string, Record<string, string[]>> = {
   annual: {
     "Annual Summary": [
-      "Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)", "Tikimt (Feb)",
-      "Hidar (Mar)", "Tahsas (Apr)", "Tir (May)", "Yekatit (Jun)",
-      "Megabit (Jul)", "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)",
+      "Hamle", "Nehase", "Meskerem", "Tikimt",
+      "Hidar", "Tahsas", "Tir", "Yekatit",
+      "Megabit", "Miyazia", "Ginbot", "Sene",
     ],
   },
   "six-month": {
     "1st Half-Year (H1)": [
-      "Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)",
-      "Tikimt (Feb)", "Hidar (Mar)", "Tahsas (Apr)",
+      "Hamle", "Nehase", "Meskerem",
+      "Tikimt", "Hidar", "Tahsas",
     ],
     "2nd Half-Year (H2)": [
-      "Tir (May)", "Yekatit (Jun)", "Megabit (Jul)",
-      "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)",
+      "Tir", "Yekatit", "Megabit",
+      "Miyazia", "Ginbot", "Sene",
     ],
   },
   quarterly: {
-    "1st Quarter (Q1)": ["Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)"],
-    "2nd Quarter (Q2)": ["Tikimt (Feb)", "Hidar (Mar)", "Tahsas (Apr)"],
-    "3rd Quarter (Q3)": ["Tir (May)", "Yekatit (Jun)", "Megabit (Jul)"],
-    "4th Quarter (Q4)": ["Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)"],
+    "1st Quarter (Q1)": ["Hamle", "Nehase", "Meskerem"],
+    "2nd Quarter (Q2)": ["Tikimt", "Hidar", "Tahsas"],
+    "3rd Quarter (Q3)": ["Tir", "Yekatit", "Megabit"],
+    "4th Quarter (Q4)": ["Miyazia", "Ginbot", "Sene"],
   },
 };
 
