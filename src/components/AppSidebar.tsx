@@ -16,6 +16,7 @@ import {
   Video,
   Cloud,
   Shield,
+  Trophy,
 } from "lucide-react";
 import {
   Sidebar,
@@ -35,6 +36,7 @@ const navItems = [
   { id: "hospital-tracker", label: "Hospital KPI Tracker", icon: Activity, color: "text-rose-500" },
   { id: "assessment-tool", label: "Facility Assessment", icon: ClipboardList, color: "text-indigo-500" },
   { id: "masterplan", label: "Master Plan", icon: ClipboardList, color: "text-purple-500" },
+  { id: "recognition-board", label: "Ward Appraisal", icon: Trophy, color: "text-amber-500" },
   { id: "meeting-hub", label: "Meeting Hub", icon: Video, color: "text-purple-500" },
   { id: "backup", label: "Backup & Recovery", icon: HardDrive, color: "text-red-500" },
   { id: "feedback", label: "Dept. Feedback", icon: MessageSquareText, color: "text-orange-500" },

@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Trophy, Medal, Star, Award, TrendingUp, TrendingDown, Minus,
   CheckCircle2, Settings2, ChevronRight, BarChart3, CalendarDays,
   Plus, Trash2, Edit2, X, Save, ClipboardList, Shield, FileText,
-  Activity, ChevronDown, Info, AlertCircle
+  Activity, ChevronDown, Info, AlertCircle, Building2, Search,
+  LayoutGrid, RefreshCw
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,26 +18,37 @@ import {
   AppraisalCriterion,
   SubMetric,
 } from "@/hooks/useAppraisalCriteria";
+import { useWardSetups, WardSetup } from "@/hooks/useWardSetups";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface DeptScore {
-  name: string;
+  name: string;           // ward name
   totalScore: number;
   rank: number;
-  criterionScores: { id: string; name: string; weight: number; score: number; color: string }[];
+  criterionScores: {
+    id: string; name: string; weight: number; score: number; color: string;
+  }[];
   trend: "up" | "down" | "stable";
   badge: "gold" | "silver" | "bronze" | "none";
   indicatorCount: number;
+  isConfigured: boolean;  // has a ward setup with indicators
 }
+
+type DraftCriterion = Omit<AppraisalCriterion, "id"> & { id?: string };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DEPARTMENTS = [
-  "Maternal & Child Health", "Child Health", "EPI",
-  "Surgical Services", "Hospital Utilization", "Quality & Safety",
-  "Pharmacy", "Blood Bank", "Tuberculosis",
-  "HIV Prevention and Control", "Non-Communicable Diseases", "Nutrition",
+// Preset ward list — extras can be typed manually
+const PRESET_WARDS = [
+  "MCH Ward",
+  "OPD",
+  "IPD",
+  "NICU",
+  "Emergency",
+  "Laboratory",
+  "Pharmacy",
+  "EPI",
 ];
 
 const PERIOD_MAP: Record<string, Record<string, string[]>> = {
@@ -48,8 +60,14 @@ const PERIOD_MAP: Record<string, Record<string, string[]>> = {
     ],
   },
   "six-month": {
-    "1st Half-Year (H1)": ["Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)", "Tikimt (Feb)", "Hidar (Mar)", "Tahsas (Apr)"],
-    "2nd Half-Year (H2)": ["Tir (May)", "Yekatit (Jun)", "Megabit (Jul)", "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)"],
+    "1st Half-Year (H1)": [
+      "Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)",
+      "Tikimt (Feb)", "Hidar (Mar)", "Tahsas (Apr)",
+    ],
+    "2nd Half-Year (H2)": [
+      "Tir (May)", "Yekatit (Jun)", "Megabit (Jul)",
+      "Miyazia (Aug)", "Ginbot (Sep)", "Sene (Oct)",
+    ],
   },
   quarterly: {
     "1st Quarter (Q1)": ["Hamle (Nov)", "Nehase (Dec)", "Meskerem (Jan)"],
@@ -69,213 +87,489 @@ const EFY_OPTIONS = [
 const MEDAL_CFG = {
   gold:   { Icon: Trophy, label: "Gold Winner",  bg: "from-yellow-50 to-amber-50",  border: "border-yellow-300", text: "text-yellow-700", accent: "#d97706", podiumH: "h-20", podiumBg: "bg-amber-200/60",  podiumNum: "text-3xl text-amber-600" },
   silver: { Icon: Medal,  label: "Silver Award", bg: "from-slate-50 to-gray-100",   border: "border-slate-300",  text: "text-slate-600",  accent: "#64748b", podiumH: "h-12", podiumBg: "bg-slate-200/80",  podiumNum: "text-2xl text-slate-400" },
-  bronze: { Icon: Star,   label: "Bronze Award", bg: "from-orange-50 to-amber-50",  border: "border-orange-300", text: "text-orange-600", accent: "#c2410c", podiumH: "h-8",  podiumBg: "bg-amber-100/40",  podiumNum: "text-xl text-orange-600" },
-  none:   { Icon: Award,  label: "Recognized",   bg: "from-blue-50 to-indigo-50",   border: "border-blue-200",   text: "text-blue-600",   accent: "#3b82f6", podiumH: "h-8",  podiumBg: "bg-blue-100/40",   podiumNum: "text-xl text-blue-600"  },
+  bronze: { Icon: Star,   label: "Bronze Award", bg: "from-orange-50 to-amber-50",  border: "border-orange-300", text: "text-orange-600", accent: "#c2410c", podiumH: "h-8",  podiumBg: "bg-amber-100/40",  podiumNum: "text-xl text-orange-600"  },
+  none:   { Icon: Award,  label: "Recognized",   bg: "from-blue-50 to-indigo-50",   border: "border-blue-200",   text: "text-blue-600",   accent: "#3b82f6", podiumH: "h-8",  podiumBg: "bg-blue-100/40",   podiumNum: "text-xl text-blue-600"   },
 };
 
 const CRIT_ICONS: Record<string, React.ElementType> = {
   activity: Activity, shield: Shield, clipboard: ClipboardList, file: FileText,
 };
 
-const COLOR_SWATCHES = ["#4f46e5", "#059669", "#7c3aed", "#d97706", "#dc2626", "#0891b2", "#c026d3", "#65a30d"];
+const COLOR_SWATCHES = [
+  "#4f46e5", "#059669", "#7c3aed", "#d97706",
+  "#dc2626", "#0891b2", "#c026d3", "#65a30d",
+];
 
-// ── Small helpers ─────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const makePeriodKey = (efy: string, interval: string, period: string) =>
   `${efy}__${interval}__${period}`;
 
-const ScoreBar = ({ score, color, h = "h-1.5" }: { score: number; color: string; h?: string }) => (
+const ScoreBar = ({
+  score, color, h = "h-1.5",
+}: { score: number; color: string; h?: string }) => (
   <div className={`w-full ${h} rounded-full bg-slate-100 overflow-hidden`}>
-    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, Math.max(0, score))}%`, background: color }} />
+    <div
+      className="h-full rounded-full transition-all duration-500"
+      style={{ width: `${Math.min(100, Math.max(0, score))}%`, background: color }}
+    />
   </div>
 );
 
 const TrendBadge = ({ trend }: { trend: "up" | "down" | "stable" }) =>
-  trend === "up"   ? <span className="flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600"><TrendingUp className="h-3 w-3" /></span> :
-  trend === "down" ? <span className="flex items-center gap-0.5 text-[10px] font-semibold text-red-500"><TrendingDown className="h-3 w-3" /></span> :
-                     <span className="flex items-center gap-0.5 text-[10px] text-slate-400"><Minus className="h-3 w-3" /></span>;
+  trend === "up"
+    ? <span className="flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600"><TrendingUp className="h-3 w-3" /></span>
+    : trend === "down"
+    ? <span className="flex items-center gap-0.5 text-[10px] font-semibold text-red-500"><TrendingDown className="h-3 w-3" /></span>
+    : <span className="flex items-center gap-0.5 text-[10px] text-slate-400"><Minus className="h-3 w-3" /></span>;
 
-// ── Criterion Editor Modal ────────────────────────────────────────────────────
- 
-type DraftCriterion = Omit<AppraisalCriterion, "id"> & { id?: string };
- 
+// ── Ward Setup Panel ──────────────────────────────────────────────────────────
+// This is the core new feature: select ward → pick indicators → save
+
+const WardSetupPanel = ({
+  periodKey,
+  efy,
+  allIndicators,
+  existingSetups,
+  onUpsert,
+  onRemove,
+}: {
+  periodKey: string;
+  efy: string;
+  allIndicators: Indicator[];
+  existingSetups: WardSetup[];
+  onUpsert: (setup: WardSetup) => void;
+  onRemove: (wardName: string) => void;
+}) => {
+  // Which ward is being added/edited right now
+  const [editingWard, setEditingWard] = useState<string | null>(null);
+  // Dropdown selection or manual typing
+  const [dropdownValue, setDropdownValue] = useState("MCH Ward");
+  const [customWardName, setCustomWardName] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+  // Indicator selection for current editing ward
+  const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
+  const [indSearch, setIndSearch] = useState("");
+
+  const isCustom = dropdownValue === "__custom__";
+  const wardNameInput = isCustom ? customWardName.trim() : dropdownValue;
+
+  // Filter indicators by search
+  const filteredInds = allIndicators.filter(ind =>
+    ind.indicator.toLowerCase().includes(indSearch.toLowerCase()) ||
+    ind.code.toLowerCase().includes(indSearch.toLowerCase()) ||
+    ind.programArea.toLowerCase().includes(indSearch.toLowerCase())
+  );
+
+  // When user clicks "Edit" on an existing ward
+  const startEdit = (setup: WardSetup) => {
+    setEditingWard(setup.wardName);
+    setSelectedCodes(setup.indicatorCodes);
+    setIndSearch("");
+    // Find if preset or custom
+    const isPreset = PRESET_WARDS.find(
+      w => w.toLowerCase() === setup.wardName.toLowerCase()
+    );
+    if (isPreset) {
+      setDropdownValue(setup.wardName);
+    } else {
+      setDropdownValue("__custom__");
+      setCustomWardName(setup.wardName);
+    }
+    setShowAddForm(true);
+  };
+
+  // Reset form
+  const resetForm = () => {
+    setShowAddForm(false);
+    setEditingWard(null);
+    setDropdownValue("MCH Ward");
+    setCustomWardName("");
+    setSelectedCodes([]);
+    setIndSearch("");
+  };
+
+  const handleSave = () => {
+    if (!wardNameInput) {
+      toast.error("Please enter a ward name");
+      return;
+    }
+    if (selectedCodes.length === 0) {
+      toast.error("Select at least one indicator");
+      return;
+    }
+    if (selectedCodes.length > 10) {
+      toast.warning("Recommended: select 5–6 key indicators per ward");
+    }
+    onUpsert({ wardName: wardNameInput, periodKey, efy, indicatorCodes: selectedCodes });
+    toast.success(`Ward "${wardNameInput}" configured with ${selectedCodes.length} indicators`);
+    resetForm();
+  };
+
+  const toggleCode = (code: string) =>
+    setSelectedCodes(prev =>
+      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
+    );
+
+  return (
+    <div className="space-y-4">
+      {/* Existing ward setups list */}
+      {existingSetups.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            Configured Wards ({existingSetups.length})
+          </p>
+          {existingSetups.map(setup => (
+            <div
+              key={setup.wardName}
+              className="flex items-center gap-3 p-3 rounded-xl border bg-slate-50/40 hover:bg-slate-50 transition-colors"
+            >
+              <div className="p-1.5 rounded-lg bg-indigo-50 border border-indigo-100 shrink-0">
+                <Building2 className="h-4 w-4 text-indigo-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-slate-800">{setup.wardName}</p>
+                <p className="text-[10px] text-slate-400">
+                  {setup.indicatorCodes.length} indicator{setup.indicatorCodes.length !== 1 ? "s" : ""} selected
+                  {setup.indicatorCodes.length > 0 && (
+                    <span className="ml-1 text-indigo-500">
+                      · {setup.indicatorCodes.slice(0, 2).join(", ")}
+                      {setup.indicatorCodes.length > 2 && ` +${setup.indicatorCodes.length - 2} more`}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <button
+                  onClick={() => startEdit(setup)}
+                  className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                >
+                  <Edit2 className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    onRemove(setup.wardName);
+                    toast.success(`Ward "${setup.wardName}" removed`);
+                  }}
+                  className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add Ward button */}
+      {!showAddForm && (
+        <button
+          onClick={() => setShowAddForm(true)}
+          className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-indigo-200 rounded-xl text-sm font-semibold text-indigo-500 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50/30 transition-all"
+        >
+          <Plus className="h-4 w-4" />
+          Add Ward / Department
+        </button>
+      )}
+
+      {/* Add / Edit form */}
+      {showAddForm && (
+        <div className="border-2 border-indigo-100 rounded-2xl p-4 space-y-4 bg-indigo-50/20">
+          {/* Ward selector */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              {editingWard ? `Editing: ${editingWard}` : "Select Ward / Department"}
+            </label>
+            <div className="flex gap-2">
+              <select
+                value={dropdownValue}
+                onChange={e => {
+                  setDropdownValue(e.target.value);
+                  if (e.target.value !== "__custom__") {
+                    setCustomWardName("");
+                  }
+                }}
+                className="flex-1 h-9 px-3 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                {PRESET_WARDS.map(w => (
+                  <option key={w} value={w}>{w}</option>
+                ))}
+                <option value="__custom__">✏️ Type manually…</option>
+              </select>
+              {isCustom && (
+                <input
+                  type="text"
+                  value={customWardName}
+                  onChange={e => setCustomWardName(e.target.value)}
+                  placeholder="Ward name…"
+                  className="flex-1 h-9 px-3 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Indicator picker */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                Select Indicators
+                <span className="ml-1.5 text-indigo-600 font-mono">({selectedCodes.length} selected)</span>
+              </label>
+              {selectedCodes.length > 0 && (
+                <button
+                  onClick={() => setSelectedCodes([])}
+                  className="text-[10px] text-red-400 hover:text-red-600 font-semibold"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            {/* Recommended badge */}
+            <p className="text-[10px] text-slate-400 mb-2 italic">
+              Recommended: choose 5–6 key indicators that best represent this ward's performance.
+            </p>
+
+            {/* Search */}
+            <div className="relative mb-2">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <input
+                type="text"
+                value={indSearch}
+                onChange={e => setIndSearch(e.target.value)}
+                placeholder="Search indicators by name, code, or program area…"
+                className="w-full h-8 pl-8 pr-3 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+
+            {/* Indicator list */}
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="max-h-56 overflow-y-auto divide-y divide-slate-50">
+                {filteredInds.length === 0 && (
+                  <p className="text-xs text-slate-400 italic text-center py-6">
+                    No indicators match your search
+                  </p>
+                )}
+                {filteredInds.map(ind => {
+                  const isChecked = selectedCodes.includes(ind.code);
+                  return (
+                    <label
+                      key={ind.code}
+                      className={cn(
+                        "flex items-start gap-3 px-3 py-2.5 cursor-pointer transition-colors",
+                        isChecked ? "bg-indigo-50" : "hover:bg-slate-50"
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleCode(ind.code)}
+                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-800 leading-snug">
+                          {ind.indicator}
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          <span className="font-mono text-indigo-500">{ind.code}</span>
+                          <span className="mx-1">·</span>
+                          {ind.programArea}
+                          <span className="mx-1">·</span>
+                          Target: <span className="font-bold">{ind.target}</span>
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              {/* Selected summary bar */}
+              {selectedCodes.length > 0 && (
+                <div className="border-t bg-indigo-50/50 px-3 py-2">
+                  <div className="flex flex-wrap gap-1">
+                    {selectedCodes.map(code => {
+                      const ind = allIndicators.find(i => i.code === code);
+                      return (
+                        <span
+                          key={code}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md text-[10px] font-semibold"
+                        >
+                          <span className="font-mono">{code}</span>
+                          <button
+                            onClick={e => { e.preventDefault(); toggleCode(code); }}
+                            className="hover:text-indigo-900"
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Form actions */}
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSave}
+              className="flex-1 text-sm font-bold gap-2"
+              disabled={!wardNameInput || selectedCodes.length === 0}
+            >
+              <Save className="h-4 w-4" />
+              {editingWard ? "Update Ward" : "Save Ward Setup"}
+            </Button>
+            <Button variant="outline" onClick={resetForm} className="text-sm">
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {existingSetups.length === 0 && !showAddForm && (
+        <div className="text-center py-6 border-2 border-dashed rounded-2xl">
+          <Building2 className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-sm text-slate-400 font-medium">No wards configured yet</p>
+          <p className="text-[11px] text-slate-300 mt-1">
+            Add wards and select their key performance indicators to begin ranking.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Criterion Modal ───────────────────────────────────────────────────────────
+
 const CriterionModal = ({
-   initial, efy, onSave, onClose, allIndicators,
- }: {
-   initial: DraftCriterion | null;
-   efy: string;
-   onSave: (c: DraftCriterion) => void;
-   onClose: () => void;
-   allIndicators: Indicator[];
- }) => {
-   const isNew = !initial?.id;
-   const [d, setD] = useState<DraftCriterion>(
-     initial ?? {
-       name: "", efy, weight: 10, departmentCategories: DEPARTMENTS,
-       linkedIndicatorCodes: [], dataSource: "manual", subMetrics: [],
-       icon: "activity", color: "#4f46e4", description: "", isActive: true,
-     }
-   );
- 
-   const addSM = () =>
-     setD(p => ({ ...p, subMetrics: [...p.subMetrics, { id: `sm_${Date.now()}`, label: "", weight: 33, hint: "" }] }));
- 
-   const removeSM = (id: string) =>
-     setD(p => ({ ...p, subMetrics: p.subMetrics.filter(s => s.id !== id) }));
- 
-   const updateSM = (id: string, field: keyof SubMetric, value: string | number) =>
-     setD(p => ({ ...p, subMetrics: p.subMetrics.map(s => s.id === id ? { ...s, [field]: value } : s) }));
- 
-   // Indicator selection for auto data source
-   const [indicatorSearch, setIndicatorSearch] = useState("");
-   const [showIndicatorPicker, setShowIndicatorPicker] = useState(false);
- 
-   const availableIndicators = allIndicators.filter(ind =>
-     ind.indicator.toLowerCase().includes(indicatorSearch.toLowerCase()) ||
-     ind.code.toLowerCase().includes(indicatorSearch.toLowerCase()) ||
-     ind.programArea.toLowerCase().includes(indicatorSearch.toLowerCase())
-   );
- 
-   const toggleIndicator = (code: string) => {
-     setD(prev => {
-       const codes = prev.linkedIndicatorCodes;
-       return {
-         ...prev,
-         linkedIndicatorCodes: codes.includes(code)
-           ? codes.filter(c => c !== code)
-           : [...codes, code]
-       };
-     });
-   };
- 
-   const handleSave = () => {
-     if (!d.name.trim()) { toast.error("Name is required"); return; }
-     if (d.weight < 1 || d.weight > 100) { toast.error("Weight must be 1–100"); return; }
-     if (d.dataSource === "manual" && d.subMetrics.length === 0) { toast.error("Add at least one sub-metric"); return; }
-     onSave(d);
-   };
+  initial, efy, allIndicators, onSave, onClose,
+}: {
+  initial: DraftCriterion | null;
+  efy: string;
+  allIndicators: Indicator[];
+  onSave: (c: DraftCriterion) => void;
+  onClose: () => void;
+}) => {
+  const isNew = !initial?.id;
+  const [d, setD] = useState<DraftCriterion>(
+    initial ?? {
+      name: "", efy, weight: 10, departmentCategories: [],
+      linkedIndicatorCodes: [], dataSource: "manual", subMetrics: [],
+      icon: "activity", color: "#4f46e5", description: "", isActive: true,
+    }
+  );
+
+  const addSM = () =>
+    setD(p => ({
+      ...p,
+      subMetrics: [...p.subMetrics, { id: `sm_${Date.now()}`, label: "", weight: 33, hint: "" }],
+    }));
+  const removeSM = (id: string) =>
+    setD(p => ({ ...p, subMetrics: p.subMetrics.filter(s => s.id !== id) }));
+  const updateSM = (id: string, field: keyof SubMetric, value: string | number) =>
+    setD(p => ({ ...p, subMetrics: p.subMetrics.map(s => s.id === id ? { ...s, [field]: value } : s) }));
+
+  const handleSave = () => {
+    if (!d.name.trim()) { toast.error("Name is required"); return; }
+    if (d.weight < 1 || d.weight > 100) { toast.error("Weight must be 1–100"); return; }
+    if (d.dataSource === "manual" && d.subMetrics.length === 0) {
+      toast.error("Add at least one sub-metric"); return;
+    }
+    onSave(d);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between p-5 border-b shrink-0">
-          <h3 className="text-sm font-bold text-slate-900">{isNew ? "Add New Criterion" : `Edit: ${d.name}`}</h3>
+          <h3 className="text-sm font-bold text-slate-900">
+            {isNew ? "Add New Criterion" : `Edit: ${d.name}`}
+          </h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
             <X className="h-4 w-4 text-slate-500" />
           </button>
         </div>
 
-        {/* Body */}
         <div className="p-5 space-y-4 overflow-y-auto flex-1">
           {/* Name */}
           <div>
-            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Criterion Name *</label>
-            <input value={d.name} onChange={e => setD(p => ({ ...p, name: e.target.value }))}
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              Criterion Name *
+            </label>
+            <input
+              value={d.name}
+              onChange={e => setD(p => ({ ...p, name: e.target.value }))}
               placeholder="e.g., Safe Motherhood Score"
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Description</label>
-            <textarea value={d.description} onChange={e => setD(p => ({ ...p, description: e.target.value }))}
-              rows={2} placeholder="Describe what this criterion evaluates..."
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none" />
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              Description
+            </label>
+            <textarea
+              value={d.description}
+              onChange={e => setD(p => ({ ...p, description: e.target.value }))}
+              rows={2}
+              placeholder="Describe what this criterion evaluates..."
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+            />
           </div>
 
           {/* Weight + Source */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Weight (%)</label>
-              <input type="number" min={1} max={100} value={d.weight}
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                Weight (%)
+              </label>
+              <input
+                type="number" min={1} max={100} value={d.weight}
                 onChange={e => setD(p => ({ ...p, weight: parseInt(e.target.value) || 0 }))}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-mono bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Data Source</label>
-              <select value={d.dataSource} onChange={e => setD(p => ({ ...p, dataSource: e.target.value as "auto" | "manual" }))}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                Data Source
+              </label>
+              <select
+                value={d.dataSource}
+                onChange={e => setD(p => ({ ...p, dataSource: e.target.value as "auto" | "manual" }))}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
                 <option value="auto">🔄 Auto (Master Plan)</option>
                 <option value="manual">✍️ Manual Entry</option>
               </select>
             </div>
           </div>
 
-{/* Color */}
+          {/* Color */}
           <div>
             <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Color</label>
             <div className="flex gap-2 flex-wrap">
               {COLOR_SWATCHES.map(c => (
-                <button key={c} onClick={() => setD(p => ({ ...p, color: c }))}
+                <button
+                  key={c}
+                  onClick={() => setD(p => ({ ...p, color: c }))}
                   className={cn("w-7 h-7 rounded-lg border-2 transition-all", d.color === c ? "border-slate-900 scale-110" : "border-transparent")}
-                  style={{ background: c }} />
+                  style={{ background: c }}
+                />
               ))}
             </div>
           </div>
- 
-          {/* Indicator Picker for Auto data source */}
-          {d.dataSource === "auto" && (
-            <div className="border-t pt-4 mt-2">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Linked Indicators ({d.linkedIndicatorCodes.length})
-                </label>
-                <button onClick={() => setShowIndicatorPicker(true)}
-                  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800">
-                  Edit Selection
-                </button>
-              </div>
-              {d.linkedIndicatorCodes.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {d.linkedIndicatorCodes.slice(0, 3).map(code => {
-                    const ind = allIndicators.find(i => i.code === code);
-                    return (
-                      <span key={code} className="text-[10px] px-1.5 py-0.5 bg-indigo-50 rounded-md text-indigo-700">
-                        {ind?.indicator ?? code}
-                      </span>
-                    );
-                  })}
-                  {d.linkedIndicatorCodes.length > 3 && (
-                    <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 rounded-md">
-                      +{d.linkedIndicatorCodes.length - 3} more
-                    </span>
-                  )}
-                </div>
-              )}
-              {!d.linkedIndicatorCodes.length && (
-                <p className="text-[10px] text-slate-400 italic">No indicators selected. Click "Edit Selection".</p>
-              )}
-              {showIndicatorPicker && (
-                <div className="mt-3 p-3 border rounded-xl max-h-64 overflow-y-auto">
-                  <input type="text" placeholder="Search indicators..." value={indicatorSearch}
-                    onChange={e => setIndicatorSearch(e.target.value)}
-                    className="w-full px-2 py-1 mb-2 border rounded text-xs" />
-                  <div className="space-y-1">
-                    {availableIndicators.map(ind => (
-                      <label key={ind.code} className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input type="checkbox" checked={d.linkedIndicatorCodes.includes(ind.code)}
-                          onChange={() => toggleIndicator(ind.code)} />
-                        <span className="truncate">{ind.programArea} – {ind.indicator}</span>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="mt-2 pt-2 border-t">
-                    <button onClick={() => setShowIndicatorPicker(false)}
-                      className="text-xs text-indigo-600 font-bold">Done</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
- 
-          {/* Sub-metrics */}
+
+          {/* Sub-metrics for manual */}
           {d.dataSource === "manual" && (
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Sub-Metrics</label>
-                <button onClick={addSM}
-                  className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded-lg hover:bg-indigo-50 transition-colors">
+                <button
+                  onClick={addSM}
+                  className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded-lg hover:bg-indigo-50 transition-colors"
+                >
                   <Plus className="h-3 w-3" /> Add
                 </button>
               </div>
@@ -289,21 +583,30 @@ const CriterionModal = ({
                   <div key={sm.id} className="border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50/50">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-bold text-slate-400 w-4 shrink-0">{idx + 1}.</span>
-                      <input value={sm.label} onChange={e => updateSM(sm.id, "label", e.target.value)}
+                      <input
+                        value={sm.label}
+                        onChange={e => updateSM(sm.id, "label", e.target.value)}
                         placeholder="Sub-metric label"
-                        className="flex-1 px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                        className="flex-1 px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      />
                       <div className="flex items-center gap-1 shrink-0">
-                        <input type="number" value={sm.weight} onChange={e => updateSM(sm.id, "weight", parseInt(e.target.value) || 0)}
-                          className="w-14 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                        <input
+                          type="number" value={sm.weight}
+                          onChange={e => updateSM(sm.id, "weight", parseInt(e.target.value) || 0)}
+                          className="w-14 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                        />
                         <span className="text-[10px] text-slate-400">%</span>
                       </div>
                       <button onClick={() => removeSM(sm.id)} className="p-1 text-red-400 hover:text-red-600 rounded shrink-0">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    <input value={sm.hint ?? ""} onChange={e => updateSM(sm.id, "hint", e.target.value)}
+                    <input
+                      value={sm.hint ?? ""}
+                      onChange={e => updateSM(sm.id, "hint", e.target.value)}
                       placeholder="Hint / description (optional)"
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-[11px] text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-[11px] text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    />
                   </div>
                 ))}
               </div>
@@ -311,7 +614,6 @@ const CriterionModal = ({
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex gap-2 p-5 border-t bg-slate-50/50 shrink-0">
           <Button onClick={handleSave} className="flex-1 text-sm font-bold gap-2">
             <Save className="h-4 w-4" />
@@ -327,21 +629,24 @@ const CriterionModal = ({
 // ── Manual Entry Panel ────────────────────────────────────────────────────────
 
 const ManualEntryPanel = ({
-  criteria,
-  periodKey,
-  getScore,
-  onScoreChange,
+  criteria, periodKey, configuredWards, getScore, onScoreChange,
 }: {
   criteria: AppraisalCriterion[];
   periodKey: string;
+  configuredWards: WardSetup[];
   getScore: (dept: string, critId: string, smId: string, pKey: string) => number;
   onScoreChange: (dept: string, critId: string, smId: string, score: number) => void;
 }) => {
   const manualCriteria = criteria.filter(c => c.dataSource === "manual");
-  const [selectedDept, setSelectedDept] = useState(DEPARTMENTS[0]);
+  const [selectedWard, setSelectedWard] = useState(configuredWards[0]?.wardName ?? "");
   const [activeCritId, setActiveCritId] = useState(manualCriteria[0]?.id ?? "");
 
-  // Keep activeCritId valid when criteria list changes
+  useEffect(() => {
+    if (configuredWards.length > 0 && !configuredWards.find(w => w.wardName === selectedWard)) {
+      setSelectedWard(configuredWards[0].wardName);
+    }
+  }, [configuredWards, selectedWard]);
+
   useEffect(() => {
     if (manualCriteria.length > 0 && !manualCriteria.find(c => c.id === activeCritId)) {
       setActiveCritId(manualCriteria[0].id);
@@ -349,6 +654,18 @@ const ManualEntryPanel = ({
   }, [manualCriteria, activeCritId]);
 
   const activeCrit = manualCriteria.find(c => c.id === activeCritId);
+
+  if (configuredWards.length === 0) {
+    return (
+      <div className="text-center py-8 border-2 border-dashed rounded-2xl">
+        <Building2 className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+        <p className="text-sm text-slate-400 font-medium">No wards configured</p>
+        <p className="text-[11px] text-slate-300 mt-1">
+          Go to "Ward Setup" tab to configure wards and indicators first.
+        </p>
+      </div>
+    );
+  }
 
   if (manualCriteria.length === 0) {
     return (
@@ -360,19 +677,22 @@ const ManualEntryPanel = ({
 
   return (
     <div className="space-y-4">
-      {/* Department selector */}
+      {/* Ward selector */}
       <div>
-        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Select Department</p>
+        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Select Ward</p>
         <div className="flex flex-wrap gap-1.5">
-          {DEPARTMENTS.map(d => (
-            <button key={d} onClick={() => setSelectedDept(d)}
+          {configuredWards.map(w => (
+            <button
+              key={w.wardName}
+              onClick={() => setSelectedWard(w.wardName)}
               className={cn(
                 "px-3 py-1.5 rounded-xl text-[11px] font-semibold border transition-all",
-                selectedDept === d
+                selectedWard === w.wardName
                   ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
                   : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-700"
-              )}>
-              {d}
+              )}
+            >
+              {w.wardName}
             </button>
           ))}
         </div>
@@ -385,12 +705,15 @@ const ManualEntryPanel = ({
             const CIcon = CRIT_ICONS[c.icon] ?? Activity;
             const isActive = activeCritId === c.id;
             return (
-              <button key={c.id} onClick={() => setActiveCritId(c.id)}
+              <button
+                key={c.id}
+                onClick={() => setActiveCritId(c.id)}
                 className={cn(
                   "flex items-center gap-2 px-4 py-3 text-xs font-bold transition-all whitespace-nowrap border-b-2",
-                  isActive ? "border-b-2" : "border-transparent text-slate-500 hover:bg-slate-100"
+                  isActive ? "" : "border-transparent text-slate-500 hover:bg-slate-100"
                 )}
-                style={isActive ? { borderBottomColor: c.color, background: c.color + "15", color: c.color } : {}}>
+                style={isActive ? { borderBottomColor: c.color, background: c.color + "15", color: c.color } : {}}
+              >
                 <CIcon className="h-3.5 w-3.5" />
                 {c.name}
                 <span className="opacity-60 font-mono ml-0.5">{c.weight}%</span>
@@ -399,7 +722,7 @@ const ManualEntryPanel = ({
           })}
         </div>
 
-        {activeCrit && (
+        {activeCrit && selectedWard && (
           <div className="p-4 space-y-4">
             <div className="flex items-start gap-2 bg-slate-50 rounded-xl p-3 border border-slate-100">
               <Info className="h-3.5 w-3.5 text-slate-400 mt-0.5 shrink-0" />
@@ -408,20 +731,24 @@ const ManualEntryPanel = ({
 
             <div className="space-y-3">
               {activeCrit.subMetrics.map(sm => {
-                const score = getScore(selectedDept, activeCrit.id, sm.id, periodKey);
+                const score = getScore(selectedWard, activeCrit.id, sm.id, periodKey);
                 return (
                   <div key={sm.id} className="border border-slate-100 rounded-xl p-3 hover:border-slate-200 transition-colors">
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <div className="flex-1">
                         <p className="text-xs font-bold text-slate-800">{sm.label}</p>
                         {sm.hint && <p className="text-[10px] text-slate-400 mt-0.5">{sm.hint}</p>}
-                        <p className="text-[10px] text-slate-400 mt-0.5">Weight: <span className="font-bold">{sm.weight}%</span> within criterion</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Weight: <span className="font-bold">{sm.weight}%</span> within criterion
+                        </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <input type="number" min={0} max={100} value={score}
-                          onChange={e => onScoreChange(selectedDept, activeCrit.id, sm.id, parseInt(e.target.value) || 0)}
+                        <input
+                          type="number" min={0} max={100} value={score}
+                          onChange={e => onScoreChange(selectedWard, activeCrit.id, sm.id, parseInt(e.target.value) || 0)}
                           className="w-20 px-3 py-2 border rounded-xl text-sm font-mono font-bold text-center focus:outline-none focus:ring-2 focus:border-transparent"
-                          style={{ borderColor: activeCrit.color + "60", color: activeCrit.color } as React.CSSProperties} />
+                          style={{ borderColor: activeCrit.color + "60", color: activeCrit.color } as React.CSSProperties}
+                        />
                         <span className="text-xs text-slate-400 font-bold">/ 100</span>
                       </div>
                     </div>
@@ -431,21 +758,24 @@ const ManualEntryPanel = ({
               })}
             </div>
 
-            {/* Composite score for this dept × criterion */}
+            {/* Composite */}
             {(() => {
               const subWeightSum = activeCrit.subMetrics.reduce((s, sm) => s + sm.weight, 0);
               const composite = subWeightSum > 0
                 ? Math.round(
-                    activeCrit.subMetrics.reduce((sum, sm) => {
-                      return sum + getScore(selectedDept, activeCrit.id, sm.id, periodKey) * sm.weight;
-                    }, 0) / subWeightSum
+                    activeCrit.subMetrics.reduce(
+                      (sum, sm) => sum + getScore(selectedWard, activeCrit.id, sm.id, periodKey) * sm.weight,
+                      0
+                    ) / subWeightSum
                   )
                 : 0;
               return (
-                <div className="flex items-center justify-between p-3 rounded-xl border-2"
-                  style={{ borderColor: activeCrit.color + "40", background: activeCrit.color + "08" }}>
+                <div
+                  className="flex items-center justify-between p-3 rounded-xl border-2"
+                  style={{ borderColor: activeCrit.color + "40", background: activeCrit.color + "08" }}
+                >
                   <span className="text-xs font-bold text-slate-600">
-                    Composite — {selectedDept}
+                    Composite — {selectedWard}
                   </span>
                   <span className="text-lg font-black tabular-nums" style={{ color: activeCrit.color }}>
                     {composite}%
@@ -465,20 +795,24 @@ const ManualEntryPanel = ({
 const PodiumCard = ({
   dept, rank, expanded, onToggle,
 }: {
-  dept: DeptScore; rank: 1 | 2 | 3;
-  expanded: boolean; onToggle: () => void;
+  dept: DeptScore; rank: 1 | 2 | 3; expanded: boolean; onToggle: () => void;
 }) => {
   const badge = (["gold", "silver", "bronze"] as const)[rank - 1];
   const cfg = MEDAL_CFG[badge];
   const { Icon } = cfg;
 
   return (
-    <button onClick={onToggle} className={cn("relative flex flex-col items-center w-full text-left transition-all duration-300", rank === 1 ? "scale-105 z-10" : "")}>
+    <button
+      onClick={onToggle}
+      className={cn("relative flex flex-col items-center w-full text-left transition-all duration-300", rank === 1 ? "scale-105 z-10" : "")}
+    >
       <div className="relative z-10 p-2.5 rounded-full shadow-sm border" style={{ background: cfg.accent + "15", borderColor: cfg.accent + "40" }}>
         <Icon className="w-7 h-7" style={{ color: cfg.accent }} />
       </div>
-      <div className={cn("w-full mt-2 rounded-xl border-2 p-4 transition-all", `bg-gradient-to-b ${cfg.bg}`, cfg.border, rank === 1 ? "pb-6" : "")}
-        style={expanded ? { outline: `2px solid ${cfg.accent}`, outlineOffset: "2px" } : {}}>
+      <div
+        className={cn("w-full mt-2 rounded-xl border-2 p-4 transition-all", `bg-gradient-to-b ${cfg.bg}`, cfg.border, rank === 1 ? "pb-6" : "")}
+        style={expanded ? { outline: `2px solid ${cfg.accent}`, outlineOffset: "2px" } : {}}
+      >
         <div className="text-center">
           <span className="text-2xl font-black tabular-nums" style={{ color: cfg.accent }}>{dept.totalScore}%</span>
           <div className="flex items-center justify-center mt-1"><TrendBadge trend={dept.trend} /></div>
@@ -515,8 +849,10 @@ const LeaderboardRow = ({ dept }: { dept: DeptScore }) => {
 
   return (
     <>
-      <tr className={cn("border-b transition-colors cursor-pointer hover:bg-slate-50", open && "bg-indigo-50/20")}
-        onClick={() => setOpen(o => !o)}>
+      <tr
+        className={cn("border-b transition-colors cursor-pointer hover:bg-slate-50", open && "bg-indigo-50/20")}
+        onClick={() => setOpen(o => !o)}
+      >
         <td className="p-3">
           <span className="font-bold text-sm tabular-nums text-slate-400">{dept.rank}</span>
         </td>
@@ -524,6 +860,9 @@ const LeaderboardRow = ({ dept }: { dept: DeptScore }) => {
           <div className="flex items-center gap-2">
             <Icon className="h-4 w-4 shrink-0" style={{ color: cfg.accent }} />
             <span className="font-medium text-sm text-slate-800">{dept.name}</span>
+            {!dept.isConfigured && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-600 font-bold">No setup</span>
+            )}
           </div>
         </td>
         <td className="p-3 text-center">
@@ -537,7 +876,7 @@ const LeaderboardRow = ({ dept }: { dept: DeptScore }) => {
             <div className="flex flex-col items-center gap-1 max-w-[90px] mx-auto">
               <span className="font-mono text-xs font-semibold" style={{ color: cs.color }}>{cs.score}%</span>
               <div className="w-14 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                <div className="h-full rounded-full transition-all" style={{ width: `${cs.score}%`, background: cs.color }} />
+                <div className="h-full rounded-full" style={{ width: `${cs.score}%`, background: cs.color }} />
               </div>
             </div>
           </td>
@@ -562,7 +901,9 @@ const LeaderboardRow = ({ dept }: { dept: DeptScore }) => {
                         <span className="text-xs font-bold text-slate-800">{cs.name}</span>
                         <span className="text-[10px] text-slate-400 font-mono">×{cs.weight}%</span>
                       </div>
-                      <span className="font-mono text-xs font-bold text-slate-700">{cs.score}% → {weighted} pts</span>
+                      <span className="font-mono text-xs font-bold text-slate-700">
+                        {cs.score}% → {weighted} pts
+                      </span>
                     </div>
                     <ScoreBar score={cs.score} color={cs.color} h="h-2" />
                   </div>
@@ -588,7 +929,7 @@ export default function RecognitionBoard({
   const { indicators: ctxIndicators } = useIndicators();
   const indicators = propIndicators.length > 0 ? propIndicators : ctxIndicators;
 
-  // ── Period filters ──────────────────────────────────────────────────────
+  // ── Period state ────────────────────────────────────────────────────────
   const [selectedInterval, setSelectedInterval] = useState<"annual" | "six-month" | "quarterly">("annual");
   const [selectedPeriod, setSelectedPeriod] = useState("Annual Summary");
 
@@ -598,7 +939,7 @@ export default function RecognitionBoard({
     else setSelectedPeriod("1st Quarter (Q1)");
   }, [selectedInterval]);
 
-  // ── Hook ────────────────────────────────────────────────────────────────
+  // ── Criteria hook ───────────────────────────────────────────────────────
   const {
     activeCriteria,
     loadingCriteria,
@@ -613,26 +954,38 @@ export default function RecognitionBoard({
 
   const pKey = makePeriodKey(selectedEFY, selectedInterval, selectedPeriod);
 
+  // ── Ward setups hook ────────────────────────────────────────────────────
+  const { setups, loadSetups, upsertSetup, removeSetup, getWardsForPeriod } = useWardSetups();
+
+  useEffect(() => { loadSetups(selectedEFY); }, [loadSetups, selectedEFY]);
+
+  const configuredWards = getWardsForPeriod(pKey);
+
   // ── UI state ────────────────────────────────────────────────────────────
   const [viewTab, setViewTab] = useState("podium");
-  const [activePanel, setActivePanel] = useState<"criteria" | "entry" | null>(null);
+  const [activePanel, setActivePanel] = useState<"setup" | "criteria" | "entry" | null>("setup");
   const [expandedPodium, setExpandedPodium] = useState<number | null>(null);
   const [modalCrit, setModalCrit] = useState<"new" | AppraisalCriterion | null>(null);
 
-  // ── Score change handler ────────────────────────────────────────────────
-  const handleScoreChange = (deptName: string, criterionId: string, subMetricId: string, score: number) => {
-    upsertScore({ deptName, criterionId, subMetricId, score: Math.max(0, Math.min(100, score)), periodKey: pKey, efy: selectedEFY });
-  };
+  // ── Handlers ────────────────────────────────────────────────────────────
+  const handleScoreChange = useCallback(
+    (deptName: string, criterionId: string, subMetricId: string, score: number) => {
+      upsertScore({
+        deptName, criterionId, subMetricId,
+        score: Math.max(0, Math.min(100, score)),
+        periodKey: pKey, efy: selectedEFY,
+      });
+    },
+    [upsertScore, pKey, selectedEFY]
+  );
 
-  // ── Criterion CRUD handlers ─────────────────────────────────────────────
   const handleSaveCrit = async (draft: DraftCriterion & { id?: string }) => {
     const totalOthers = activeCriteria
       .filter(c => c.id !== draft.id)
       .reduce((s, c) => s + c.weight, 0);
     if (totalOthers + draft.weight > 100) {
-      toast.warning(`Total weights would reach ${totalOthers + draft.weight}%. Please adjust to sum to 100%.`);
+      toast.warning(`Weights would reach ${totalOthers + draft.weight}%. Adjust to sum to 100%.`);
     }
-
     if (draft.id) {
       await updateCriterion(draft.id, {
         name: draft.name, weight: draft.weight,
@@ -648,38 +1001,47 @@ export default function RecognitionBoard({
   };
 
   // ── Score computation ───────────────────────────────────────────────────
+  // Only rank wards that have been configured for this period
   const rankedDepts = useMemo<DeptScore[]>(() => {
     const months = PERIOD_MAP[selectedInterval]?.[selectedPeriod] ?? PERIOD_MAP.annual["Annual Summary"];
     const totalWeight = activeCriteria.reduce((s, c) => s + c.weight, 0);
     const trends: DeptScore["trend"][] = ["up", "stable", "down", "stable", "up", "stable", "up", "down", "stable", "up", "stable", "down"];
 
-    return DEPARTMENTS.map((deptName, idx) => {
+    // We rank CONFIGURED wards (those that have a ward setup for this period)
+    const wardsToRank = configuredWards.length > 0 ? configuredWards : [];
+
+    return wardsToRank.map((wardSetup: WardSetup, idx: number) => {
+      const wardName = wardSetup.wardName;
       let totalWeightedScore = 0;
 
-const criterionScores = activeCriteria.map(crit => {
-         let score = 0;
- 
-         if (crit.dataSource === "auto") {
-           // Use linked indicators if specified, otherwise fallback to department filter
-           const linkedInds = crit.linkedIndicatorCodes.length > 0
-             ? indicators.filter(ind => crit.linkedIndicatorCodes.includes(ind.code))
-             : indicators.filter(ind => crit.departmentCategories.includes(ind.programArea));
-           let totalAch = 0, count = 0;
-           linkedInds.forEach(ind => {
-             const periodData = monthlyData.filter(e => e.code === ind.code && months.includes(e.month));
-             const actual = periodData.reduce((s, e) => s + (e.actual ?? 0), 0);
-             const targetScaled = (ind.target / 12) * months.length;
-             const ratio = targetScaled > 0 ? actual / targetScaled : 0;
-             totalAch += Math.min(1, ratio) * 100;
-             count++;
-           });
-           score = count > 0 ? Math.round(totalAch / count) : 0;
-         } else {
+      const criterionScores = activeCriteria.map(crit => {
+        let score = 0;
+
+        if (crit.dataSource === "auto") {
+          // Use ward's selected indicator codes
+          const wardInds = indicators.filter(ind =>
+            wardSetup.indicatorCodes.includes(ind.code)
+          );
+          let totalAch = 0, count = 0;
+          wardInds.forEach(ind => {
+            const periodData = monthlyData.filter(
+              e => e.code === ind.code && months.includes(e.month)
+            );
+            const actual = periodData.reduce((s, e) => s + (e.actual ?? 0), 0);
+            const targetScaled = (ind.target / 12) * months.length;
+            const ratio = targetScaled > 0 ? actual / targetScaled : 0;
+            totalAch += Math.min(1, ratio) * 100;
+            count++;
+          });
+          score = count > 0 ? Math.round(totalAch / count) : 0;
+        } else {
+          // Manual sub-metrics
           const subWeightSum = crit.subMetrics.reduce((s, sm) => s + sm.weight, 0);
           if (subWeightSum > 0) {
-            const weighted = crit.subMetrics.reduce((sum, sm) => {
-              return sum + getScore(deptName, crit.id, sm.id, pKey) * sm.weight;
-            }, 0);
+            const weighted = crit.subMetrics.reduce(
+              (sum, sm) => sum + getScore(wardName, crit.id, sm.id, pKey) * sm.weight,
+              0
+            );
             score = Math.round(weighted / subWeightSum);
           }
         }
@@ -691,22 +1053,23 @@ const criterionScores = activeCriteria.map(crit => {
       const totalScore = totalWeight > 0 ? Math.round(totalWeightedScore / totalWeight) : 0;
 
       return {
-        name: deptName,
+        name: wardName,
         totalScore,
         rank: 0,
         criterionScores,
         trend: trends[idx % trends.length],
         badge: "none" as const,
-        indicatorCount: indicators.filter(i => i.programArea === deptName).length,
+        indicatorCount: wardSetup.indicatorCodes.length,
+        isConfigured: true,
       };
     })
-    .sort((a, b) => b.totalScore - a.totalScore)
-    .map((d, i) => ({
+    .sort((a: DeptScore, b: DeptScore) => b.totalScore - a.totalScore)
+    .map((d: DeptScore, i: number) => ({
       ...d,
       rank: i + 1,
       badge: (i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "none") as DeptScore["badge"],
     }));
-  }, [indicators, monthlyData, activeCriteria, getScore, pKey, selectedInterval, selectedPeriod]);
+  }, [indicators, monthlyData, activeCriteria, configuredWards, getScore, pKey, selectedInterval, selectedPeriod]);
 
   const topThree = rankedDepts.slice(0, 3);
   const podiumOrder = [topThree[1], topThree[0], topThree[2]].filter(Boolean) as DeptScore[];
@@ -727,23 +1090,25 @@ const criterionScores = activeCriteria.map(crit => {
               Active Block: <strong className="text-amber-600 uppercase">{selectedEFY}</strong>
               <span className="mx-1.5 text-slate-300">·</span>
               {selectedPeriod}
+              <span className="mx-1.5 text-slate-300">·</span>
+              <span className="text-indigo-500 font-semibold">{configuredWards.length} ward{configuredWards.length !== 1 ? "s" : ""} configured</span>
             </p>
           </div>
         </div>
-        {/* Criteria weight chips */}
+        {/* Criteria chips */}
         <div className="flex flex-wrap gap-1.5 items-center">
           {activeCriteria.map(c => {
             const CIcon = CRIT_ICONS[c.icon] ?? Activity;
             return (
               <div key={c.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border bg-white shadow-sm text-xs">
                 <CIcon className="h-3 w-3 shrink-0" style={{ color: c.color }} />
-                <span className="text-slate-500 truncate max-w-[90px]">{c.name}</span>
+                <span className="text-slate-500 truncate max-w-[80px]">{c.name}</span>
                 <span className="font-bold tabular-nums" style={{ color: c.color }}>{c.weight}%</span>
               </div>
             );
           })}
           <div className={cn(
-            "flex items-center px-2.5 py-1.5 rounded-lg border text-xs font-bold tabular-nums",
+            "flex items-center px-2.5 py-1.5 rounded-lg border text-xs font-bold",
             totalW === 100 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"
           )}>
             {totalW === 100 ? <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> : <AlertCircle className="h-3.5 w-3.5 mr-1" />}
@@ -752,29 +1117,38 @@ const criterionScores = activeCriteria.map(crit => {
         </div>
       </div>
 
-      {/* ── Period Filter ────────────────────────────────────────────── */}
+      {/* ── Period Filter ─────────────────────────────────────────────── */}
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <CalendarDays className="h-5 w-5 text-indigo-500" />
           <div>
             <h4 className="text-xs font-bold text-slate-800">Dynamic Appraisal Matrix Controls</h4>
-            <p className="text-[10px] text-slate-400">Toggle EFY, reporting interval, and specific period.</p>
+            <p className="text-[10px] text-slate-400">Toggle EFY, interval, and period. Then configure wards below.</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-          <select value={selectedEFY} onChange={e => setSelectedEFY(e.target.value)}
-            className="h-9 px-3 border border-indigo-200 rounded-xl text-xs bg-indigo-50/45 text-indigo-900 font-bold focus:outline-none cursor-pointer">
+          <select
+            value={selectedEFY}
+            onChange={e => setSelectedEFY(e.target.value)}
+            className="h-9 px-3 border border-indigo-200 rounded-xl text-xs bg-indigo-50/45 text-indigo-900 font-bold focus:outline-none cursor-pointer"
+          >
             {EFY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <select value={selectedInterval} onChange={e => setSelectedInterval(e.target.value as any)}
-            className="h-9 px-3 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 font-bold focus:outline-none cursor-pointer">
+          <select
+            value={selectedInterval}
+            onChange={e => setSelectedInterval(e.target.value as any)}
+            className="h-9 px-3 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 font-bold focus:outline-none cursor-pointer"
+          >
             <option value="annual">Annual YTD</option>
             <option value="six-month">Six-Month</option>
             <option value="quarterly">Quarterly</option>
           </select>
           {selectedInterval !== "annual" && (
-            <select value={selectedPeriod} onChange={e => setSelectedPeriod(e.target.value)}
-              className="h-9 px-3 border border-indigo-200 rounded-xl text-xs bg-white text-indigo-900 font-bold focus:outline-none cursor-pointer">
+            <select
+              value={selectedPeriod}
+              onChange={e => setSelectedPeriod(e.target.value)}
+              className="h-9 px-3 border border-indigo-200 rounded-xl text-xs bg-white text-indigo-900 font-bold focus:outline-none cursor-pointer"
+            >
               {Object.keys(PERIOD_MAP[selectedInterval] ?? {}).map(p => (
                 <option key={p} value={p}>{p}</option>
               ))}
@@ -783,52 +1157,99 @@ const criterionScores = activeCriteria.map(crit => {
         </div>
       </div>
 
-      {/* ── Panel Toggles ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Criteria Manager toggle */}
-        <button onClick={() => setActivePanel(activePanel === "criteria" ? null : "criteria")}
+      {/* ── Panel Toggle Buttons ─────────────────────────────────────── */}
+      <div className="grid grid-cols-3 gap-3">
+        {/* Ward Setup */}
+        <button
+          onClick={() => setActivePanel(activePanel === "setup" ? null : "setup")}
           className={cn(
-            "flex items-center gap-3 p-4 rounded-2xl border text-left transition-all",
-            activePanel === "criteria"
+            "flex items-center gap-2.5 p-4 rounded-2xl border text-left transition-all",
+            activePanel === "setup"
               ? "bg-indigo-600 text-white border-indigo-600 shadow-md"
               : "bg-white border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/30"
-          )}>
+          )}
+        >
+          <Building2 className="h-5 w-5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold">Ward Setup</p>
+            <p className={cn("text-[11px] truncate", activePanel === "setup" ? "text-indigo-200" : "text-slate-400")}>
+              {configuredWards.length > 0
+                ? `${configuredWards.length} ward${configuredWards.length !== 1 ? "s" : ""} ready`
+                : "Configure wards first"}
+            </p>
+          </div>
+          <ChevronDown className={cn("h-4 w-4 ml-auto shrink-0 transition-transform", activePanel === "setup" && "rotate-180")} />
+        </button>
+
+        {/* Criteria Manager */}
+        <button
+          onClick={() => setActivePanel(activePanel === "criteria" ? null : "criteria")}
+          className={cn(
+            "flex items-center gap-2.5 p-4 rounded-2xl border text-left transition-all",
+            activePanel === "criteria"
+              ? "bg-violet-600 text-white border-violet-600 shadow-md"
+              : "bg-white border-slate-200 hover:border-violet-200 hover:bg-violet-50/30"
+          )}
+        >
           <Settings2 className="h-5 w-5 shrink-0" />
           <div className="min-w-0">
-            <p className="text-sm font-bold">Criteria Manager</p>
-            <p className={cn("text-[11px] truncate", activePanel === "criteria" ? "text-indigo-200" : "text-slate-400")}>
+            <p className="text-sm font-bold">Criteria</p>
+            <p className={cn("text-[11px] truncate", activePanel === "criteria" ? "text-violet-200" : "text-slate-400")}>
               {activeCriteria.length} criteria · Σ {totalW}%
             </p>
           </div>
           <ChevronDown className={cn("h-4 w-4 ml-auto shrink-0 transition-transform", activePanel === "criteria" && "rotate-180")} />
         </button>
 
-        {/* Manual Entry toggle */}
-        <button onClick={() => setActivePanel(activePanel === "entry" ? null : "entry")}
+        {/* Manual Entry */}
+        <button
+          onClick={() => setActivePanel(activePanel === "entry" ? null : "entry")}
           className={cn(
-            "flex items-center gap-3 p-4 rounded-2xl border text-left transition-all",
+            "flex items-center gap-2.5 p-4 rounded-2xl border text-left transition-all",
             activePanel === "entry"
               ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
               : "bg-white border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/30"
-          )}>
+          )}
+        >
           <ClipboardList className="h-5 w-5 shrink-0" />
           <div className="min-w-0">
-            <p className="text-sm font-bold">Manual Data Entry</p>
+            <p className="text-sm font-bold">Manual Entry</p>
             <p className={cn("text-[11px] truncate", activePanel === "entry" ? "text-emerald-200" : "text-slate-400")}>
-              Quality, Audit & Reporting scores
+              Quality, Audit & PMT
             </p>
           </div>
           <ChevronDown className={cn("h-4 w-4 ml-auto shrink-0 transition-transform", activePanel === "entry" && "rotate-180")} />
         </button>
       </div>
 
-      {/* ── Criteria Manager Panel ────────────────────────────────────── */}
-      {activePanel === "criteria" && (
+      {/* ── Ward Setup Panel ──────────────────────────────────────────── */}
+      {activePanel === "setup" && (
         <div className="bg-white border border-indigo-100 rounded-2xl p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-indigo-50 pb-3">
+          <div className="border-b border-indigo-50 pb-3">
+            <h3 className="text-sm font-bold text-slate-900">Ward Setup</h3>
+            <p className="text-[11px] text-slate-500">
+              For <strong>{selectedPeriod} · {selectedEFY}</strong> — select wards and their key performance indicators.
+              Pillar 1 (Performance) auto-calculates from the indicators you choose here.
+            </p>
+          </div>
+          <WardSetupPanel
+            periodKey={pKey}
+            efy={selectedEFY}
+            allIndicators={indicators}
+            existingSetups={configuredWards}
+            onUpsert={upsertSetup}
+            onRemove={wardName => removeSetup(wardName, pKey, selectedEFY)}
+          />
+        </div>
+      )}
+
+      {/* ── Criteria Manager Panel ─────────────────────────────────────── */}
+      {activePanel === "criteria" && (
+        <div className="bg-white border border-violet-100 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-violet-50 pb-3">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Appraisal Criteria Manager ({selectedEFY})</h3>
-              <p className="text-[11px] text-slate-500">Define, weight, and manage evaluation criteria for department appraisal.</p>
+              <p className="text-[11px] text-slate-500">Define and weight the 4 evaluation pillars.</p>
             </div>
             <Button size="sm" onClick={() => setModalCrit("new")} className="text-xs gap-1.5">
               <Plus className="h-3.5 w-3.5" /> Add Criterion
@@ -836,12 +1257,11 @@ const criterionScores = activeCriteria.map(crit => {
           </div>
 
           <div className="space-y-2">
-            {loadingCriteria && <p className="text-xs text-slate-400 italic text-center py-4">Loading criteria…</p>}
+            {loadingCriteria && <p className="text-xs text-slate-400 italic text-center py-4">Loading…</p>}
             {!loadingCriteria && activeCriteria.length === 0 && (
               <div className="text-center py-8 border-2 border-dashed rounded-2xl">
                 <Settings2 className="h-8 w-8 text-slate-300 mx-auto mb-2" />
                 <p className="text-sm text-slate-400 font-medium">No criteria defined</p>
-                <p className="text-xs text-slate-300 mt-1">Click "Add Criterion" to get started</p>
               </div>
             )}
             {activeCriteria.map(c => {
@@ -856,7 +1276,7 @@ const criterionScores = activeCriteria.map(crit => {
                       <span className="text-sm font-bold text-slate-800">{c.name}</span>
                       <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full border"
                         style={{ color: c.color, borderColor: c.color + "40", background: c.color + "10" }}>
-                        {c.weight}% weight
+                        {c.weight}%
                       </span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold">
                         {c.dataSource === "auto" ? "🔄 Auto" : "✍️ Manual"}
@@ -892,23 +1312,25 @@ const criterionScores = activeCriteria.map(crit => {
             "p-3 rounded-xl border text-center text-xs font-bold",
             totalW === 100 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"
           )}>
-            {totalW === 100 ? "✅ Weights sum to 100% — properly balanced" : `⚠️ Weights sum to ${totalW}% — adjust to reach 100%`}
+            {totalW === 100 ? "✅ Weights sum to 100%" : `⚠️ Weights sum to ${totalW}% — adjust to reach 100%`}
           </div>
         </div>
       )}
 
-      {/* ── Manual Entry Panel ────────────────────────────────────────── */}
+      {/* ── Manual Entry Panel ─────────────────────────────────────────── */}
       {activePanel === "entry" && (
         <div className="bg-white border border-emerald-100 rounded-2xl p-5 shadow-sm space-y-4">
           <div className="border-b border-emerald-50 pb-3">
             <h3 className="text-sm font-bold text-slate-900">Manual Score Entry</h3>
             <p className="text-[11px] text-slate-500">
-              Scores for <strong>{selectedPeriod}</strong> · <strong>{selectedEFY}</strong> — saved per department automatically.
+              Enter Quality, Audit & PMT scores per ward for <strong>{selectedPeriod} · {selectedEFY}</strong>.
+              Scores are saved automatically.
             </p>
           </div>
           <ManualEntryPanel
             criteria={activeCriteria}
             periodKey={pKey}
+            configuredWards={configuredWards}
             getScore={getScore}
             onScoreChange={handleScoreChange}
           />
@@ -919,7 +1341,9 @@ const criterionScores = activeCriteria.map(crit => {
       <div className="grid grid-cols-3 gap-3">
         <Card className="p-3 text-center border bg-slate-50/20">
           <p className="text-xl font-extrabold text-slate-900">{rankedDepts.length}</p>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Departments</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            Ranked Wards
+          </p>
         </Card>
         <Card className="p-3 text-center border bg-slate-50/20">
           <p className="text-xl font-extrabold text-amber-600">{rankedDepts[0]?.totalScore ?? 0}%</p>
@@ -927,115 +1351,142 @@ const criterionScores = activeCriteria.map(crit => {
         </Card>
         <Card className="p-3 text-center border bg-slate-50/20">
           <p className="text-xl font-extrabold text-indigo-600">{avgScore}%</p>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Hospital Average</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Average</p>
         </Card>
       </div>
 
-      {/* ── Main Tabs ─────────────────────────────────────────────────── */}
-      <Tabs value={viewTab} onValueChange={setViewTab} className="space-y-4">
-        <TabsList className="bg-slate-100 p-1 rounded-xl w-fit flex gap-1 border">
-          <TabsTrigger value="podium" className="text-xs px-3 py-1.5 font-bold flex items-center gap-1.5">
-            <Trophy className="h-3.5 w-3.5 text-amber-500" />Podium View
-          </TabsTrigger>
-          <TabsTrigger value="leaderboard" className="text-xs px-3 py-1.5 font-bold flex items-center gap-1.5">
-            <BarChart3 className="h-3.5 w-3.5 text-indigo-500" />Full Rankings
-          </TabsTrigger>
-        </TabsList>
+      {/* ── Empty state if no wards configured ────────────────────────── */}
+      {rankedDepts.length === 0 && (
+        <div className="text-center py-12 border-2 border-dashed rounded-2xl bg-slate-50/40">
+          <LayoutGrid className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+          <p className="text-base font-bold text-slate-400">No wards ranked yet</p>
+          <p className="text-sm text-slate-300 mt-1 max-w-xs mx-auto">
+            Open <strong>Ward Setup</strong> above, add wards, select their indicators, then save — rankings will appear here.
+          </p>
+          <button
+            onClick={() => setActivePanel("setup")}
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-colors"
+          >
+            <Building2 className="h-4 w-4" />
+            Open Ward Setup
+          </button>
+        </div>
+      )}
 
-        {/* Podium */}
-        <TabsContent value="podium" className="mt-4">
-          <div className="flex flex-col md:flex-row justify-center items-center md:items-end gap-6 pb-6 pt-4 max-w-3xl mx-auto">
-            {([
-              { dept: podiumOrder[0], rank: 2 as const },
-              { dept: podiumOrder[1], rank: 1 as const },
-              { dept: podiumOrder[2], rank: 3 as const },
-            ]).filter(x => x.dept).map(({ dept, rank }) => {
-              const badge = (["gold", "silver", "bronze"] as const)[rank - 1];
-              const cfg = MEDAL_CFG[badge];
-              const podiumIdx = rank - 1;
-              return (
-                <div key={dept.name} className={cn("shrink-0", rank === 1 ? "w-[200px]" : "w-[180px]")}>
-                  <PodiumCard dept={dept} rank={rank}
-                    expanded={expandedPodium === podiumIdx}
-                    onToggle={() => setExpandedPodium(expandedPodium === podiumIdx ? null : podiumIdx)} />
-                  <div className={cn(`mt-2 rounded-t-sm ${cfg.podiumH} ${cfg.podiumBg} flex items-center justify-center border-t`)}>
-                    <span className={cn("font-black", cfg.podiumNum)}>{rank}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+      {/* ── Main View Tabs (shown only when wards exist) ───────────────── */}
+      {rankedDepts.length > 0 && (
+        <Tabs value={viewTab} onValueChange={setViewTab} className="space-y-4">
+          <TabsList className="bg-slate-100 p-1 rounded-xl w-fit flex gap-1 border">
+            <TabsTrigger value="podium" className="text-xs px-3 py-1.5 font-bold flex items-center gap-1.5">
+              <Trophy className="h-3.5 w-3.5 text-amber-500" />Podium View
+            </TabsTrigger>
+            <TabsTrigger value="leaderboard" className="text-xs px-3 py-1.5 font-bold flex items-center gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5 text-indigo-500" />Full Rankings
+            </TabsTrigger>
+          </TabsList>
 
-          {rankedDepts.length > 3 && (
-            <Card className="rounded-2xl border bg-white p-5 shadow-sm">
-              <CardHeader className="pb-3 border-b p-0 mb-4">
-                <CardTitle className="text-sm font-bold text-slate-500 uppercase tracking-wider">All Other Departments</CardTitle>
-              </CardHeader>
-              <CardContent className="divide-y divide-slate-100 p-0">
-                {rankedDepts.slice(3).map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-3 py-2.5">
-                    <span className="text-sm font-bold text-slate-400 w-5 tabular-nums">{i + 4}</span>
-                    <Award className="h-4 w-4 text-slate-400 shrink-0" />
-                    <span className="flex-1 text-sm font-semibold text-slate-800">{d.name}</span>
-                    <TrendBadge trend={d.trend} />
-                    <div className="flex gap-1.5">
-                      {d.criterionScores.map(cs => (
-                        <span key={cs.id} className="text-[10px] font-mono px-1.5 py-0.5 rounded-md hidden sm:inline-block"
-                          style={{ color: cs.color, background: cs.color + "12" }}>
-                          {cs.score}%
-                        </span>
-                      ))}
+          {/* Podium */}
+          <TabsContent value="podium" className="mt-4">
+            <div className="flex flex-col md:flex-row justify-center items-center md:items-end gap-6 pb-6 pt-4 max-w-3xl mx-auto">
+              {([
+                { dept: podiumOrder[0], rank: 2 as const },
+                { dept: podiumOrder[1], rank: 1 as const },
+                { dept: podiumOrder[2], rank: 3 as const },
+              ]).filter(x => x.dept).map(({ dept, rank }) => {
+                const badge = (["gold", "silver", "bronze"] as const)[rank - 1];
+                const cfg = MEDAL_CFG[badge];
+                const podiumIdx = rank - 1;
+                return (
+                  <div key={dept.name} className={cn("shrink-0", rank === 1 ? "w-[200px]" : "w-[180px]")}>
+                    <PodiumCard
+                      dept={dept} rank={rank}
+                      expanded={expandedPodium === podiumIdx}
+                      onToggle={() => setExpandedPodium(expandedPodium === podiumIdx ? null : podiumIdx)}
+                    />
+                    <div className={cn(`mt-2 rounded-t-sm ${cfg.podiumH} ${cfg.podiumBg} flex items-center justify-center border-t`)}>
+                      <span className={cn("font-black", cfg.podiumNum)}>{rank}</span>
                     </div>
-                    <span className="font-mono text-sm font-bold text-indigo-600 w-12 text-right tabular-nums">{d.totalScore}%</span>
                   </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        {/* Leaderboard */}
-        <TabsContent value="leaderboard" className="mt-4">
-          <Card className="rounded-2xl border bg-white shadow-sm overflow-hidden p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead>
-                  <tr className="border-b bg-slate-50/50">
-                    <th className="p-3 text-xs font-bold uppercase tracking-wider text-slate-400 w-14">Rank</th>
-                    <th className="p-3 text-xs font-bold uppercase tracking-wider text-slate-400">Department</th>
-                    <th className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-400 w-24">Total</th>
-                    {activeCriteria.map(c => (
-                      <th key={c.id} className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap hidden md:table-cell">
-                        <div className="flex items-center justify-center gap-1">
-                          <span className="w-2 h-2 rounded-full inline-block" style={{ background: c.color }} />
-                          <span className="max-w-[80px] truncate">{c.name.split(" ")[0]}</span>
-                          <span className="opacity-50 font-mono">{c.weight}%</span>
-                        </div>
-                      </th>
-                    ))}
-                    <th className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-400 w-16">Trend</th>
-                    <th className="p-3 w-8" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {rankedDepts.map(d => <LeaderboardRow key={d.name} dept={d} />)}
-                </tbody>
-              </table>
+                );
+              })}
             </div>
-          </Card>
-        </TabsContent>
-      </Tabs>
 
-{/* ── Criterion Modal ───────────────────────────────────────────── */}
-       {modalCrit !== null && (
-         <CriterionModal
-           initial={modalCrit === "new" ? null : { ...modalCrit }}
-           efy={selectedEFY}
-           allIndicators={indicators}
-           onSave={handleSaveCrit}
-           onClose={() => setModalCrit(null)}
-         />
-       )}
+            {rankedDepts.length > 3 && (
+              <Card className="rounded-2xl border bg-white p-5 shadow-sm">
+                <CardHeader className="pb-3 border-b p-0 mb-4">
+                  <CardTitle className="text-sm font-bold text-slate-500 uppercase tracking-wider">
+                    All Other Wards
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="divide-y divide-slate-100 p-0">
+                  {rankedDepts.slice(3).map((d, i) => (
+                    <div key={d.name} className="flex items-center gap-3 py-2.5">
+                      <span className="text-sm font-bold text-slate-400 w-5 tabular-nums">{i + 4}</span>
+                      <Award className="h-4 w-4 text-slate-400 shrink-0" />
+                      <span className="flex-1 text-sm font-semibold text-slate-800">{d.name}</span>
+                      <TrendBadge trend={d.trend} />
+                      <div className="flex gap-1.5">
+                        {d.criterionScores.map(cs => (
+                          <span key={cs.id}
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded-md hidden sm:inline-block"
+                            style={{ color: cs.color, background: cs.color + "12" }}>
+                            {cs.score}%
+                          </span>
+                        ))}
+                      </div>
+                      <span className="font-mono text-sm font-bold text-indigo-600 w-12 text-right tabular-nums">
+                        {d.totalScore}%
+                      </span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* Leaderboard */}
+          <TabsContent value="leaderboard" className="mt-4">
+            <Card className="rounded-2xl border bg-white shadow-sm overflow-hidden p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead>
+                    <tr className="border-b bg-slate-50/50">
+                      <th className="p-3 text-xs font-bold uppercase tracking-wider text-slate-400 w-14">Rank</th>
+                      <th className="p-3 text-xs font-bold uppercase tracking-wider text-slate-400">Ward</th>
+                      <th className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-400 w-24">Total</th>
+                      {activeCriteria.map(c => (
+                        <th key={c.id} className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap hidden md:table-cell">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="w-2 h-2 rounded-full inline-block" style={{ background: c.color }} />
+                            <span className="max-w-[70px] truncate">{c.name.split(" ")[0]}</span>
+                            <span className="opacity-50 font-mono">{c.weight}%</span>
+                          </div>
+                        </th>
+                      ))}
+                      <th className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-400 w-16">Trend</th>
+                      <th className="p-3 w-8" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankedDepts.map(d => <LeaderboardRow key={d.name} dept={d} />)}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {/* ── Criterion Modal ───────────────────────────────────────────── */}
+      {modalCrit !== null && (
+        <CriterionModal
+          initial={modalCrit === "new" ? null : { ...modalCrit }}
+          efy={selectedEFY}
+          allIndicators={indicators}
+          onSave={handleSaveCrit}
+          onClose={() => setModalCrit(null)}
+        />
+      )}
     </div>
   );
 }
