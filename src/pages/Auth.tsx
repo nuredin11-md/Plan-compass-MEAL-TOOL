@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,9 @@ const DEPARTMENTS = [
 ];
 
 export default function Auth() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot" | "reset">(
+    () => window.location.hash.includes("type=recovery") ? "reset" : "login",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -29,6 +31,14 @@ export default function Auth() {
   // Remove role selection from signup - roles must be assigned by admin only
   const DEFAULT_USER_ROLE = "viewer";
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const recoverySubscription = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") setMode("reset");
+    });
+
+    return () => recoverySubscription.data.subscription.unsubscribe();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +86,39 @@ export default function Auth() {
     setLoading(false);
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}${window.location.pathname}`,
+    });
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Password reset instructions sent. Check your email.");
+    }
+    setLoading(false);
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Password updated. You can now sign in.");
+      await supabase.auth.signOut();
+      setPassword("");
+      setMode("login");
+    }
+    setLoading(false);
+  };
+
+  const isReset = mode === "reset";
+  const isForgot = mode === "forgot";
+  const isSignup = mode === "signup";
+
   return (
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-tr from-slate-950 via-indigo-950 to-slate-950 flex items-center justify-center p-4">
       
@@ -102,8 +145,8 @@ export default function Auth() {
 
         {/* Auth Glassmorphism Card Container */}
         <div className="rounded-2xl border border-slate-800/80 bg-slate-900/80 backdrop-blur-xl p-6 shadow-2xl space-y-4">
-          <form onSubmit={mode === "login" ? handleLogin : handleSignup} className="space-y-4">
-            {mode === "signup" && (
+          <form onSubmit={isReset ? handleResetPassword : isForgot ? handleForgotPassword : isSignup ? handleSignup : handleLogin} className="space-y-4">
+            {isSignup && (
               <div className="space-y-1">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Full Name</label>
                 <Input
@@ -116,7 +159,7 @@ export default function Auth() {
               </div>
             )}
 
-            <div className="space-y-1">
+            {!isReset && <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Hospital Email Address</label>
               <Input
                 type="email"
@@ -126,9 +169,9 @@ export default function Auth() {
                 required
                 className="bg-slate-950/80 border-slate-800 text-slate-200 placeholder:text-slate-600 focus-visible:ring-indigo-500 h-9 text-xs"
               />
-            </div>
+            </div>}
 
-            <div className="space-y-1">
+            {!isForgot && !isReset && <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Password</label>
               <Input
                 type="password"
@@ -139,9 +182,22 @@ export default function Auth() {
                 minLength={6}
                 className="bg-slate-950/80 border-slate-800 text-slate-200 placeholder:text-slate-600 focus-visible:ring-indigo-500 h-9 text-xs"
               />
-            </div>
+            </div>}
 
-            {mode === "signup" && (
+            {isReset && <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">New Password</label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 6 characters"
+                required
+                minLength={6}
+                className="bg-slate-950/80 border-slate-800 text-slate-200 placeholder:text-slate-600 focus-visible:ring-indigo-500 h-9 text-xs"
+              />
+            </div>}
+
+            {isSignup && (
               <div className="space-y-3 pt-1">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">M&E Operating Specialty</label>
@@ -167,6 +223,10 @@ export default function Auth() {
             <Button type="submit" className="w-full h-9 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-lg shadow-indigo-600/15 cursor-pointer mt-4" disabled={loading}>
               {loading ? (
                 <div className="animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full" />
+              ) : isReset ? (
+                <>Update Password</>
+              ) : isForgot ? (
+                <>Send Reset Link</>
               ) : mode === "login" ? (
                 <><LogIn className="h-3.5 w-3.5" /> Enter Portal</>
               ) : (
@@ -181,6 +241,16 @@ export default function Auth() {
                 Lacking credentials?{" "}
                 <button onClick={() => setMode("signup")} className="text-indigo-400 font-bold hover:underline select-text cursor-pointer">
                   Request Roster Entry
+                </button>
+                <button type="button" onClick={() => setMode("forgot")} className="block mx-auto mt-2 text-indigo-400 font-bold hover:underline select-text cursor-pointer">
+                  Forgot password?
+                </button>
+              </p>
+            ) : mode === "forgot" || mode === "reset" ? (
+              <p className="text-slate-400">
+                Remember your password?{" "}
+                <button type="button" onClick={() => setMode("login")} className="text-indigo-400 font-bold hover:underline select-text cursor-pointer">
+                  Return to login
                 </button>
               </p>
             ) : (

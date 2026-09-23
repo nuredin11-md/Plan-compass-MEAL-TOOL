@@ -28,7 +28,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function AuthRoute() {
   const { user, loading } = useAuth();
   if (loading) return null;
-  if (user) return <Navigate to="/" replace />;
+  const isRecoverySession = window.location.hash.includes("type=recovery");
+  if (user && !isRecoverySession) return <Navigate to="/" replace />;
   return <Auth />;
 }
 

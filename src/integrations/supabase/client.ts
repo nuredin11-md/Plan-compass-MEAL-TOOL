@@ -28,6 +28,8 @@ const createFallbackClient = () => {
       getSession: async () => ({ data: { session: null } }),
       signInWithPassword: async () => ({ error: { message: supabaseNotConfiguredError } }),
       signUp: async () => ({ error: { message: supabaseNotConfiguredError } }),
+      resetPasswordForEmail: async () => ({ error: { message: supabaseNotConfiguredError } }),
+      updateUser: async () => ({ error: { message: supabaseNotConfiguredError } }),
       signOut: async () => ({ error: null }),
     },
     from: () => queryStub,
